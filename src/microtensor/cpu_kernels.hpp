@@ -1,12 +1,14 @@
-#include "tensor.hpp"
-#include "tensor_iterator.hpp"
 #include <cassert>
 #include <cstddef>
 #include <vector>
 
+#include "tensor.hpp"
+#include "tensor_iterator.hpp"
+
 namespace tensors {
 
-template <typename T> Tensor<T> add(const Tensor<T> &a, const Tensor<T> &b) {
+template <typename T>
+Tensor<T> add(const Tensor<T>& a, const Tensor<T>& b) {
   auto [res_shape, broadcasted_tensors] = broadcast_tensors(a, b);
   auto [broadcast_a, broadcast_b] = broadcasted_tensors;
 
@@ -22,7 +24,7 @@ template <typename T> Tensor<T> add(const Tensor<T> &a, const Tensor<T> &b) {
 }
 
 template <typename T>
-Tensor<T> elementwise_multiply(const Tensor<T> &a, const Tensor<T> &b) {
+Tensor<T> elementwise_multiply(const Tensor<T>& a, const Tensor<T>& b) {
   auto [res_shape, broadcasted_tensors] = broadcast_tensors(a, b);
   auto [broadcast_a, broadcast_b] = broadcasted_tensors;
 
@@ -37,7 +39,7 @@ Tensor<T> elementwise_multiply(const Tensor<T> &a, const Tensor<T> &b) {
 }
 
 template <typename T>
-Tensor<T> scalar_multiply(const Tensor<T> &a, const T &s) {
+Tensor<T> scalar_multiply(const Tensor<T>& a, const T& s) {
   Tensor<T> res(a.shape());
   TensorIterator<T, const T> itr(res, a);
 
@@ -49,7 +51,7 @@ Tensor<T> scalar_multiply(const Tensor<T> &a, const T &s) {
 }
 
 template <typename T>
-Tensor<T> naive_matmul(const Tensor<T> &a, const Tensor<T> &b) {
+Tensor<T> naive_matmul(const Tensor<T>& a, const Tensor<T>& b) {
   assert(a.ndim() == 2 && b.ndim() == 2);
   assert(a.shape()[1] == b.shape()[0]);
 
@@ -79,4 +81,4 @@ Tensor<T> naive_matmul(const Tensor<T> &a, const Tensor<T> &b) {
   return res;
 }
 
-} // namespace tensors
+}  // namespace tensors

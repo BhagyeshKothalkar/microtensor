@@ -9,11 +9,13 @@
 
 namespace tensors {
 
-template <typename T> class Tensor;
+template <typename T>
+class Tensor;
 
-template <typename Dest, typename... Src> class TensorIterator {
+template <typename Dest, typename... Src>
+class TensorIterator {
   static constexpr size_t n_terms = sizeof...(Src) + 1;
-  std::tuple<Dest *, Src *...> data_;
+  std::tuple<Dest*, Src*...> data_;
 
   std::vector<size_t> shapes_;
   std::array<std::vector<size_t>, n_terms> strides_;
@@ -22,13 +24,14 @@ template <typename Dest, typename... Src> class TensorIterator {
   std::array<size_t, n_terms> offsets_;
   bool has_next_flag_;
 
-  template <std::size_t... Is> auto dereference(std::index_sequence<Is...>) {
-    return std::tuple<Dest &, Src &...>{std::get<Is>(data_)[offsets_[Is]]...};
+  template <std::size_t... Is>
+  auto dereference(std::index_sequence<Is...>) {
+    return std::tuple<Dest&, Src&...>{std::get<Is>(data_)[offsets_[Is]]...};
   }
 
-public:
+ public:
   template <typename... TensorTypes>
-  TensorIterator(Tensor<Dest> &dest, TensorTypes &...srcs) {
+  TensorIterator(Tensor<Dest>& dest, TensorTypes&... srcs) {
     data_ = std::make_tuple(dest.data(), srcs.data()...);
     shapes_ = dest.shape();
     strides_ = {dest.stride(), srcs.stride()...};
@@ -73,4 +76,4 @@ public:
   }
 };
 
-} // namespace tensors
+}  // namespace tensors

@@ -7,10 +7,11 @@
 
 namespace tensors {
 
-template <typename T> class Tensor;
+template <typename T>
+class Tensor;
 
 template <typename... Types>
-bool are_broadcastable(const Tensor<Types> &...tensors) {
+bool are_broadcastable(const Tensor<Types>&... tensors) {
   if constexpr (sizeof...(tensors) == 0) {
     return true;
   }
@@ -21,7 +22,7 @@ bool are_broadcastable(const Tensor<Types> &...tensors) {
     size_t target_dim = 1;
     bool valid = true;
 
-    auto check_dim = [&target_dim, &valid, dim](const auto &tensor) {
+    auto check_dim = [&target_dim, &valid, dim](const auto& tensor) {
       size_t curr_dim = 1;
       int idx =
           static_cast<int>(tensor.shape().size()) - 1 - static_cast<int>(dim);
@@ -46,7 +47,7 @@ bool are_broadcastable(const Tensor<Types> &...tensors) {
 }
 
 template <typename... Types>
-std::vector<size_t> get_broadcast_shape(const Tensor<Types> &...tensors) {
+std::vector<size_t> get_broadcast_shape(const Tensor<Types>&... tensors) {
   if constexpr (sizeof...(tensors) == 0) {
     return {};
   }
@@ -57,7 +58,7 @@ std::vector<size_t> get_broadcast_shape(const Tensor<Types> &...tensors) {
   for (size_t dim = 0; dim < broadcast_rank; ++dim) {
     bool valid = true;
 
-    auto check_dim = [&return_shape, &valid, dim](const auto &tensor) {
+    auto check_dim = [&return_shape, &valid, dim](const auto& tensor) {
       size_t curr_dim = 1;
       int idx =
           static_cast<int>(tensor.shape().size()) - 1 - static_cast<int>(dim);
@@ -86,11 +87,11 @@ std::vector<size_t> get_broadcast_shape(const Tensor<Types> &...tensors) {
 }
 
 template <typename T>
-Tensor<T> broadcast_to_shape(const Tensor<T> &in,
-                             const std::vector<size_t> &target_shape) {
+Tensor<T> broadcast_to_shape(const Tensor<T>& in,
+                             const std::vector<size_t>& target_shape) {
   std::vector<size_t> new_strides(target_shape.size(), 0);
-  const auto &curr_shape = in.shape();
-  const auto &curr_strides = in.stride();
+  const auto& curr_shape = in.shape();
+  const auto& curr_strides = in.stride();
 
   size_t target_rank = target_shape.size();
   size_t curr_rank = curr_shape.size();
@@ -110,15 +111,15 @@ Tensor<T> broadcast_to_shape(const Tensor<T> &in,
 }
 
 template <typename... Types>
-auto broadcast_tensors(const std::vector<size_t> &target_shape,
-                       const Tensor<Types> &...tensors) {
+auto broadcast_tensors(const std::vector<size_t>& target_shape,
+                       const Tensor<Types>&... tensors) {
   return std::make_tuple(broadcast_to_shape(tensors, target_shape)...);
 }
 
 template <typename... Types>
-auto broadcast_tensors(const Tensor<Types> &...tensors) {
+auto broadcast_tensors(const Tensor<Types>&... tensors) {
   auto target_shape = get_broadcast_shape(tensors...);
   return std::make_pair(target_shape,
                         broadcast_tensors(target_shape, tensors...));
 }
-} // namespace tensors
+}  // namespace tensors
