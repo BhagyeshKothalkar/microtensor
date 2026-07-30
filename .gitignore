@@ -1,0 +1,8 @@
+
+# the build directory
+
+build/
+
+#the cache directory
+
+.cache/
