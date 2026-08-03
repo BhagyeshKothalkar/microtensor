@@ -3,7 +3,9 @@
 #include <stdexcept>
 #include <vector>
 
+#include "microtensor/broadcasting.hpp"
 #include "microtensor/cpu_kernels.hpp"
+#include "microtensor/nn.hpp"
 #include "microtensor/tensor.hpp"
 #include "microtensor/tensor_iterator.hpp"
 
@@ -19,7 +21,7 @@ void print_shape(const std::string& name, const std::vector<size_t>& shape) {
 
 void test_metadata_and_layout() {
   std::cout << "--- Test 1: Tensor Metadata & Layout ---\n";
-  Tensor<float> t({2uz, 3uz, 4uz});
+  Tensor t({2uz, 3uz, 4uz});
   assert((t.ndim() == 3));
   assert((t.numel() == 24));
   assert((!t.empty()));
@@ -35,8 +37,8 @@ void test_metadata_and_layout() {
 void test_broadcasting_rules() {
   std::cout << "--- Test 2: Shape Inference & Stride Rules ---\n";
 
-  Tensor<float> A({5uz, 1uz, 4uz, 1uz});
-  Tensor<float> B({3uz, 1uz, 1uz});
+  Tensor A({5uz, 1uz, 4uz, 1uz});
+  Tensor B({3uz, 1uz, 1uz});
 
   assert((are_broadcastable(A, B) == true));
 
@@ -55,8 +57,8 @@ void test_broadcasting_rules() {
   assert((bB.stride()[1] == 1));
   assert((bB.stride()[2] == 0));
 
-  Tensor<float> P({5uz, 2uz, 4uz, 1uz});
-  Tensor<float> Q({3uz, 1uz, 1uz});
+  Tensor P({5uz, 2uz, 4uz, 1uz});
+  Tensor Q({3uz, 1uz, 1uz});
 
   assert((!are_broadcastable(P, Q)));
   bool caught = false;
@@ -73,21 +75,21 @@ void test_broadcasting_rules() {
 void test_2d_auto_broadcast() {
   std::cout << "--- Test 3: 2D Auto-Broadcasting (C = A + B) ---\n";
 
-  Tensor<float> A({3uz, 1uz});
+  Tensor A({3uz, 1uz});
   A[0uz, 0uz] = 1.0f;
   A[1uz, 0uz] = 2.0f;
   A[2uz, 0uz] = 3.0f;
 
-  Tensor<float> B({2uz});
+  Tensor B({2uz});
   B[0uz] = 10.0f;
   B[1uz] = 20.0f;
 
   auto target_shape = get_broadcast_shape(A, B);
   auto [bA, bB] = broadcast_tensors(target_shape, A, B);
 
-  Tensor<float> C(target_shape);
+  Tensor C(target_shape);
 
-  TensorIterator<float, float, float> it(C, bA, bB);
+  TensorIterator<float, const float, const float> it(C, bA, bB);
   while (it.has_next()) {
     auto [c, a, b] = it.next();
     c = a + b;
@@ -103,9 +105,9 @@ void test_2d_auto_broadcast() {
 void test_n_ary_high_dimensional_broadcast() {
   std::cout << "--- Test 4: N-ary 3D Broadcasting (D = A + B + C) ---\n";
 
-  Tensor<float> A({2uz, 1uz, 3uz});
-  Tensor<float> B({3uz});
-  Tensor<float> C({1uz});
+  Tensor A({2uz, 1uz, 3uz});
+  Tensor B({3uz});
+  Tensor C({1uz});
 
   for (size_t i = 0; i < 2; ++i) {
     for (size_t j = 0; j < 3; ++j) {
@@ -119,9 +121,10 @@ void test_n_ary_high_dimensional_broadcast() {
 
   auto out_shape = get_broadcast_shape(A, B, C);
   auto [bA, bB, bC] = broadcast_tensors(out_shape, A, B, C);
-  Tensor<float> D(out_shape);
+  Tensor D(out_shape);
 
-  TensorIterator<float, float, float, float> it(D, bA, bB, bC);
+  TensorIterator<float, const float, const float, const float> it(D, bA, bB,
+                                                                  bC);
 
   size_t step_count = 0;
   while (it.has_next()) {
@@ -144,11 +147,11 @@ void test_n_ary_high_dimensional_broadcast() {
 void test_elementwise_kernels() {
   std::cout << "--- Test 5: Elementwise Kernels (Add, Mul, Scalar) ---\n";
 
-  Tensor<float> A({2uz, 1uz});
+  Tensor A({2uz, 1uz});
   A[0uz, 0uz] = 1.0f;
   A[1uz, 0uz] = 2.0f;
 
-  Tensor<float> B({1uz, 2uz});
+  Tensor B({1uz, 2uz});
   B[0uz, 0uz] = 3.0f;
   B[0uz, 1uz] = 4.0f;
 
@@ -177,7 +180,7 @@ void test_elementwise_kernels() {
 void test_matmul_kernel() {
   std::cout << "--- Test 6: Matrix Multiplication (naive_matmul) ---\n";
 
-  Tensor<float> A({2uz, 3uz});
+  Tensor A({2uz, 3uz});
   A[0uz, 0uz] = 1.0f;
   A[0uz, 1uz] = 2.0f;
   A[0uz, 2uz] = 3.0f;
@@ -185,7 +188,7 @@ void test_matmul_kernel() {
   A[1uz, 1uz] = 5.0f;
   A[1uz, 2uz] = 6.0f;
 
-  Tensor<float> B({3uz, 2uz});
+  Tensor B({3uz, 2uz});
   B[0uz, 0uz] = 7.0f;
   B[0uz, 1uz] = 8.0f;
   B[1uz, 0uz] = 9.0f;
@@ -208,6 +211,30 @@ void test_matmul_kernel() {
   std::cout << "Matrix multiplication kernel passed.\n\n";
 }
 
+void test_nn() {
+  using namespace tensors;
+  using namespace tensors::nn;
+
+  // Create individual layers: 
+  // fc1: in_dim=2, out_dim=4 -> weight shape will be {2, 4}
+  Linear fc1(2, 4);
+  
+  // fc2: in_dim=4, out_dim=1 -> weight shape will be {4, 1}
+  Linear fc2(4, 1);
+
+  // Combine them into a sequential container
+  Sequential net({{"fc1", &fc1}, {"fc2", &fc2}});
+
+  // Create an input tensor with shape [in_dim, batch_size] -> {2, 1}
+  Tensor input({2, 1}, {1.0f, -2.0f});
+
+  // Run forward pass
+  Tensor output = net.forward(input);
+
+  std::cout << "Forward pass completed successfully! Output numel: "
+            << output.numel() << std::endl;
+}
+
 int main() {
   std::cout << "====================================\n";
   std::cout << "   microtensor Core Stress Tests     \n";
@@ -220,6 +247,8 @@ int main() {
 
   test_elementwise_kernels();
   test_matmul_kernel();
+
+  test_nn();
 
   std::cout << "ALL TESTS PASSED SUCCESSFULLY.\n";
   return 0;

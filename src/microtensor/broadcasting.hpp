@@ -3,15 +3,17 @@
 #include <algorithm>
 #include <cstddef>
 #include <stdexcept>
+#include <tuple>
+#include <utility>
 #include <vector>
+
+#include "microtensor/tensor.hpp"
 
 namespace tensors {
 
-template <typename T>
-class Tensor;
-
 template <typename... Types>
-bool are_broadcastable(const Tensor<Types>&... tensors) {
+  requires(std::same_as<std::decay_t<Types>, Tensor> && ...)
+bool are_broadcastable(const Types&... tensors) {
   if constexpr (sizeof...(tensors) == 0) {
     return true;
   }
@@ -47,7 +49,8 @@ bool are_broadcastable(const Tensor<Types>&... tensors) {
 }
 
 template <typename... Types>
-std::vector<size_t> get_broadcast_shape(const Tensor<Types>&... tensors) {
+  requires(std::same_as<std::decay_t<Types>, Tensor> && ...)
+std::vector<size_t> get_broadcast_shape(const Types&... tensors) {
   if constexpr (sizeof...(tensors) == 0) {
     return {};
   }
@@ -86,9 +89,8 @@ std::vector<size_t> get_broadcast_shape(const Tensor<Types>&... tensors) {
   return return_shape;
 }
 
-template <typename T>
-Tensor<T> broadcast_to_shape(const Tensor<T>& in,
-                             const std::vector<size_t>& target_shape) {
+inline Tensor broadcast_to_shape(const Tensor& in,
+                                 const std::vector<size_t>& target_shape) {
   std::vector<size_t> new_strides(target_shape.size(), 0);
   const auto& curr_shape = in.shape();
   const auto& curr_strides = in.stride();
@@ -107,19 +109,22 @@ Tensor<T> broadcast_to_shape(const Tensor<T>& in,
     }
   }
 
-  return Tensor<T>(target_shape, new_strides, in.storage(), in.offset());
+  return Tensor(target_shape, new_strides, in.storage(), in.offset());
 }
 
 template <typename... Types>
+  requires(std::same_as<std::decay_t<Types>, Tensor> && ...)
 auto broadcast_tensors(const std::vector<size_t>& target_shape,
-                       const Tensor<Types>&... tensors) {
+                       const Types&... tensors) {
   return std::make_tuple(broadcast_to_shape(tensors, target_shape)...);
 }
 
 template <typename... Types>
-auto broadcast_tensors(const Tensor<Types>&... tensors) {
+  requires(std::same_as<std::decay_t<Types>, Tensor> && ...)
+auto broadcast_tensors(const Types&... tensors) {
   auto target_shape = get_broadcast_shape(tensors...);
   return std::make_pair(target_shape,
                         broadcast_tensors(target_shape, tensors...));
 }
+
 }  // namespace tensors

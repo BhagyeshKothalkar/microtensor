@@ -1,8 +1,13 @@
-
 # the build directory
-
 build/
 
 #the cache directory
-
 .cache/
+
+#accidental compilations
+a.out
+
+# temporary files and dump i create for debugging. 
+temp.*
+dump.*
+
