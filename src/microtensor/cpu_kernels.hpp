@@ -2,10 +2,12 @@
 
 #include "tensor.hpp"
 namespace tensors {
-
-Tensor add(const Tensor& a, const Tensor& b);
-Tensor elementwise_multiply(const Tensor& a, const Tensor& b);
-Tensor scalar_multiply(const Tensor& a, const float& s);
-Tensor naive_matmul(const Tensor& a, const Tensor& b);
-
+namespace cpu_kernels {
+void add(Tensor& a, const Tensor& b);
+void elementwise_multiply(Tensor& a, const Tensor& b);
+void scalar_multiply(Tensor& a, const float& s);
+void naive_matmul(const Tensor& a, const Tensor& b, Tensor& res);
+void relu(Tensor& x);
+void softmax(Tensor& x);
+};  // namespace cpu_kernels
 }  // namespace tensors

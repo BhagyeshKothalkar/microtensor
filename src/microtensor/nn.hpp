@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-#include "microtensor/cpu_kernels.hpp"
+#include "microtensor/functional.hpp"
 #include "microtensor/tensor.hpp"
 
 namespace tensors {
@@ -221,7 +221,7 @@ inline Linear::Linear(size_t in_dim, size_t out_dim)
 }
 
 inline Tensor Linear::forward(const Tensor& x) {
-  return add(naive_matmul(weight, x), bias);
+  return functional::add_(functional::naive_matmul(weight, x), bias);
 }
 
 inline Sequential::Sequential(std::initializer_list<ModuleHolder> list) {

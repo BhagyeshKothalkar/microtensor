@@ -15,6 +15,6 @@ target_sources(microtensor_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tensor_iterator.hpp>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/broadcasting.hpp>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cpu_kernels.hpp>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/functional.hpp>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/nn.hpp>
 )
-
