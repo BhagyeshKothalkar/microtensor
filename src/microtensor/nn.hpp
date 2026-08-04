@@ -1,14 +1,11 @@
 /**
  * @file nn.hpp
  * @brief Minimal neural network module framework.
- *
  * This file provides a lightweight abstraction for building neural network
  * layers and composing them into larger models.
- *
  * Every module exposes a forward() function and may register:
  *  - trainable parameters (Tensor objects),
  *  - child modules.
- *
  * Parameter and child registration enables recursive traversal of a model
  * hierarchy without requiring RTTI or manual bookkeeping.
  */
@@ -29,15 +26,12 @@ namespace nn {
 
 /**
  * @brief Base class for all neural network modules.
- *
  * A Module represents any differentiable computation, such as a linear layer,
  * activation function or container.
- *
  * Derived classes should:
  *  - register their trainable parameters,
  *  - register child modules (if any),
  *  - implement forward().
- *
  * Example:
  * @code
  * class ReLU : public Module {
@@ -62,10 +56,8 @@ class Module {
 
   /**
    * @brief Registers trainable parameters.
-   *
    * Registration does not transfer ownership. The caller is responsible for
    * ensuring the lifetime of every Tensor exceeds that of the module.
-   *
    * Example:
    * @code
    * register_parameters({
@@ -73,7 +65,6 @@ class Module {
    *     {"bias",&bias}
    * });
    * @endcode
-   *
    * @param pairs Parameter name/pointer pairs.
    */
   void register_parameters(
@@ -81,12 +72,9 @@ class Module {
 
   /**
    * @brief Registers child modules.
-   *
    * Registration preserves insertion order, allowing containers such as
    * Sequential to execute children deterministically.
-   *
    * Ownership is not transferred.
-   *
    * @param pairs Child name/pointer pairs.
    */
   void register_children(
@@ -94,23 +82,19 @@ class Module {
 
   /**
    * @brief Returns the registered child modules.
-   *
    * @return Immutable list of named child modules.
    */
   const std::vector<std::pair<std::string, Module*>>& children() const;
 
   /**
    * @brief Returns the registered trainable parameters.
-   *
    * @return Immutable list of named parameters.
    */
   const std::vector<std::pair<std::string, Tensor*>>& parameters() const;
 
   /**
    * @brief Computes the module output.
-   *
    * Every derived module must implement this function.
-   *
    * @param x Input tensor.
    * @return Output tensor.
    */
@@ -119,13 +103,9 @@ class Module {
 
 /**
  * @brief Fully connected affine layer.
- *
  * Computes
- *
  *     y = Wx + b
- *
  * where W has shape (out_dim, in_dim) and b has shape (out_dim).
- *
  * The weight and bias tensors are automatically registered as trainable
  * parameters.
  */
@@ -140,10 +120,8 @@ class Linear : public Module {
  public:
   /**
    * @brief Constructs a linear layer.
-   *
    * Storage for the weight matrix and bias vector is allocated but left
    * uninitialized.
-   *
    * @param in_dim Number of input features.
    * @param out_dim Number of output features.
    */
@@ -151,11 +129,8 @@ class Linear : public Module {
 
   /**
    * @brief Applies the affine transformation.
-   *
    * Computes
-   *
    *     weight × x + bias
-   *
    * @param x Input tensor.
    * @return Layer output.
    */
@@ -178,10 +153,8 @@ class ModuleHolder {
 
 /**
  * @brief Sequential container of modules.
- *
  * Executes each registered child module in insertion order, passing the
  * output of one module as the input to the next.
- *
  * Example:
  * @code
  * Sequential model({
@@ -199,25 +172,24 @@ class Sequential : public Module {
  public:
   /**
    * @brief Constructs a sequential container from newly constructed modules.
-   *
+
    * @param list Ordered sequence of named modules.
    */
   Sequential(std::initializer_list<ModuleHolder> list);
 
   /**
    * @brief Applies every child module in sequence.
-   *
    * Equivalent to
-   *
    * @code
    * y = m_n(...m_2(m_1(x)))
    * @endcode
-   *
    * @param x Input tensor.
    * @return Output of the final module.
    */
   inline Tensor forward(const Tensor& x);
 };
+
+/* implementations */
 
 inline void Module::register_parameters(
     std::initializer_list<std::pair<std::string_view, Tensor*>> pairs) {

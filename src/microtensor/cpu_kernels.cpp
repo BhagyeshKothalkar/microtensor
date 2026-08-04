@@ -110,6 +110,5 @@ Tensor softmax_(Tensor& x) {
     x_val = exp(x_val) / sum;
   }
   return x;
-  
 }
 }  // namespace tensors

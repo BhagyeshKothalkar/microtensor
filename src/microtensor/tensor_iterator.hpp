@@ -2,19 +2,15 @@
  * @file tensor_iterator.hpp
  * @brief Generic lock-step iterator over one destination and multiple source
  * tensors.
- *
  * TensorIterator provides a common iteration mechanism for elementwise kernels.
  * It walks every logical index of a (broadcasted) tensor exactly once while
  * maintaining independent offsets into each participating tensor.
- *
  * The iterator itself performs no computation—it only yields references to the
  * current elements. Numerical kernels implement the actual operation using
  * these references.
- *
  * Typical usage:
  * @code
  * TensorIterator<float, const float, const float> it(dst, a, b);
- *
  * while (it.has_next()) {
  *     auto [out, x, y] = it.next();
  *     out = x + y;
@@ -37,14 +33,11 @@ namespace tensors {
 
 /**
  * @brief Lock-step iterator for elementwise tensor kernels.
- *
  * Dest denotes the destination element type, while Src... denote the source
  * element types. The iterator stores raw pointers together with per-tensor
  * strides and offsets, allowing efficient traversal without repeatedly
  * recomputing multidimensional indices.
- *
  * Iteration order is row-major over the logical tensor shape.
- *
  * @tparam Dest Destination element type.
  * @tparam Src Source element types.
  */
@@ -68,10 +61,8 @@ class TensorIterator {
 
   /**
    * @brief Produces references to the current tensor elements.
-   *
    * Expands the pointer tuple using the current offsets and returns a tuple of
    * references suitable for structured bindings.
-   *
    * @return Tuple containing references to the current destination and source
    * elements.
    */
@@ -82,15 +73,12 @@ class TensorIterator {
   /**
    * @brief An iterator over one destination and several source
    * tensors.
-   *
    * All tensors are assumed to already have compatible logical shapes and
    * broadcasted strides. The iterator simply traverses them in lock-step.
-   *
    * Example:
    * @code
    * TensorIterator<float,const float,const float> it(dst, a, b);
    * @endcode
-   *
    * @param dest Destination tensor.
    * @param srcs Source tensors.
    */
@@ -99,24 +87,20 @@ class TensorIterator {
 
   /**
    * @brief Checks whether another element is available.
-   *
    * @return true if next() may be called.
    */
   bool has_next() const;
 
   /**
    * @brief Returns the current tensor elements and advances the iterator.
-   *
    * The returned tuple contains references into the underlying tensors. After
    * returning the current elements, the iterator advances to the next logical
    * position using row-major ordering.
-   *
    * Example:
    * @code
    * auto [out, x, y] = iter.next();
    * out = x * y;
    * @endcode
-   *
    * @return Tuple of references to the current destination and source elements.
    */
   auto next();

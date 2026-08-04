@@ -1,12 +1,10 @@
 /**
  * @file broadcasting.hpp
  * @brief Utilities implementing tensor broadcasting.
- *
  * Broadcasting allows tensors with compatible shapes to participate in
  * elementwise operations without physically replicating data. Dimensions are
  * matched from the trailing axis towards the leading axis, and dimensions of
  * size one are conceptually expanded to the required size.
- *
  * This file provides utilities for:
  *  - Checking broadcast compatibility.
  *  - Computing the resulting broadcast shape.
@@ -29,19 +27,16 @@ namespace tensors {
 
 /**
  * @brief Checks whether a collection of tensors can be broadcast together.
- *
  * Broadcasting follows NumPy/PyTorch rules:
  * - Dimensions are compared from the last axis.
  * - Missing leading dimensions are treated as size one.
  * - Two dimensions are compatible if they are equal or one of them is one.
- *
  * Example:
  * @code
  * {2,3,4} and {3,4}      -> true
  * {5,1,7} and {1,8,7}    -> true
  * {2,3} and {4,3}        -> false
  * @endcode
- *
  * @tparam Types Tensor parameter pack.
  * @param tensors Tensors to compare.
  * @return true if broadcasting is possible.
@@ -94,23 +89,18 @@ bool are_broadcastable(const Types&... tensors) {
 
 /**
  * @brief Computes the common broadcast shape.
- *
  * Returns the shape obtained after applying NumPy broadcasting rules to all
  * tensors.
- *
  * Throws std::invalid_argument if the tensors are incompatible.
- *
  * Example:
  * @code
  * {2,3,4} and {3,4}
  * ->
  * {2,3,4}
  * @endcode
- *
  * @tparam Types Tensor parameter pack.
  * @param tensors Input tensors.
  * @return Broadcasted shape.
- *
  * @throws std::invalid_argument
  *         If the tensors cannot be broadcast together.
  */
@@ -164,24 +154,19 @@ std::vector<size_t> get_broadcast_shape(const Types&... tensors) {
 
 /**
  * @brief Creates a broadcasted view of a tensor.
- *
  * No data is copied. Instead, broadcasted dimensions receive stride zero,
  * causing every logical index along that dimension to reference the same
  * underlying element.
- *
  * The caller is responsible for ensuring that the requested target shape is
  * broadcast-compatible with the input tensor.
- *
  * Example:
  * @code
  * Shape {3,1}
  * ->
  * broadcast_to_shape(...,{3,4})
- *
  * Resulting strides become
  * {1,0}
  * @endcode
- *
  * @param in Input tensor.
  * @param target_shape Desired logical shape.
  * @return Broadcasted tensor view.
@@ -213,10 +198,8 @@ inline Tensor broadcast_to_shape(const Tensor& in,
 
 /**
  * @brief Broadcasts several tensors to a common target shape.
- *
  * Every returned tensor is a lightweight view sharing the original storage.
  * No memory allocation or copying of tensor elements occurs.
- *
  * @tparam Types Tensor parameter pack.
  * @param target_shape Desired broadcast shape.
  * @param tensors Input tensors.
@@ -231,15 +214,12 @@ auto broadcast_tensors(const std::vector<size_t>& target_shape,
 
 /**
  * @brief Automatically broadcasts several tensors.
- *
  * First computes the common broadcast shape and then constructs broadcasted
  * views of every tensor.
- *
  * Example:
  * @code
  * auto [shape, views] = broadcast_tensors(a, b, c);
  * @endcode
- *
  * @tparam Types Tensor parameter pack.
  * @param tensors Input tensors.
  * @return Pair consisting of:

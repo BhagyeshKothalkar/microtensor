@@ -15,14 +15,11 @@ namespace tensors {
 
 /**
  * @brief Computes row-major strides for a tensor shape.
- *
  * Given a tensor shape, returns the stride (measured in elements)
  * corresponding to a contiguous row-major layout.
- *
  * Example:
  * Shape = {2, 3, 4}
  * Strides = {12, 4, 1}
- *
  * @param shape Tensor dimensions.
  * @return Row-major strides for the given shape.
  */
@@ -43,9 +40,7 @@ inline std::vector<size_t> compute_strides(const std::vector<size_t>& shape) {
 
 /**
  * @brief Computes the total number of elements in a tensor.
- *
  * The size is the product of all dimensions.
- *
  * @param shape Tensor dimensions.
  * @return Total number of elements.
  */
@@ -58,19 +53,15 @@ inline size_t compute_size(const std::vector<size_t>& shape) {
 
 /**
  * @brief Dense tensor view with shared storage.
- *
  * Tensor stores only metadata (shape, stride and offset) together with
  * shared ownership of the underlying storage. Multiple Tensor objects
  * may therefore refer to the same allocation while exposing different
  * layouts or views.
- *
  * Memory layout is row-major by default.
- *
  * Example:
  * @code
  * Tensor A({2,3});
  * A[1,2] = 5.f;
- *
  * Tensor B({2,2}, stride, A.storage(), offset);
  * @endcode
  */
@@ -93,10 +84,8 @@ class Tensor {
 
   /**
    * @brief Converts multidimensional indices into a flat index.
-   *
    * The returned index is relative to data_, meaning the tensor offset
    * has already been accounted for.
-   *
    * @param indices Tensor indices.
    * @return Flat index into data_.
    */
@@ -110,19 +99,15 @@ class Tensor {
 
   /**
    * @brief Allocates a contiguous tensor.
-   *
    * Storage is allocated but left uninitialized.
-   *
    * @param shape Tensor dimensions.
    */
   explicit Tensor(std::vector<size_t> shape);
 
   /**
    * @brief Constructs a tensor view over existing storage.
-   *
    * This constructor does not allocate memory. It allows multiple
    * Tensor objects to share storage while exposing different layouts.
-   *
    * @param shape Tensor dimensions.
    * @param stride Tensor strides.
    * @param storage Shared storage.
@@ -133,14 +118,11 @@ class Tensor {
 
   /**
    * @brief Constructs a tensor initialized from a list.
-   *
    * The number of supplied values must exactly equal the tensor size.
-   *
    * Example:
    * @code
    * Tensor t({2,2}, {1.f,2.f,3.f,4.f});
    * @endcode
-   *
    * @param shape Tensor dimensions.
    * @param list Initial values.
    */
@@ -148,9 +130,7 @@ class Tensor {
 
   /**
    * @brief Mutable element access.
-   *
    * Number of supplied indices must equal the tensor rank.
-   *
    * Example:
    * @code
    * tensor[1,2] = 5.f;
@@ -169,7 +149,6 @@ class Tensor {
 
   /**
    * @brief Read-only element access.
-   *
    * Number of supplied indices must equal the tensor rank.
    */
   template <typename... Indices>
@@ -234,7 +213,6 @@ class Tensor {
 
   /**
    * @brief Checks whether the tensor is stored contiguously.
-   *
    * A tensor is contiguous if its strides correspond to a
    * row-major memory layout.
    */
