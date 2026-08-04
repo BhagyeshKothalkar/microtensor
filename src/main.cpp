@@ -215,15 +215,8 @@ void test_nn() {
   using namespace tensors;
   using namespace tensors::nn;
 
-  // Create individual layers: 
-  // fc1: in_dim=2, out_dim=4 -> weight shape will be {2, 4}
-  Linear fc1(2, 4);
-  
-  // fc2: in_dim=4, out_dim=1 -> weight shape will be {4, 1}
-  Linear fc2(4, 1);
-
   // Combine them into a sequential container
-  Sequential net({{"fc1", &fc1}, {"fc2", &fc2}});
+  Sequential net({Linear(2, 4), Linear(4, 1)});
 
   // Create an input tensor with shape [in_dim, batch_size] -> {2, 1}
   Tensor input({2, 1}, {1.0f, -2.0f});

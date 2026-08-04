@@ -162,6 +162,20 @@ class Linear : public Module {
   Tensor forward(const Tensor& x) override;
 };
 
+class ModuleHolder {
+ public:
+  std::shared_ptr<Module> ptr;
+
+  // Template constructor that accepts ANY object derived from Module by
+  // value/rvalue. We use SFINAE to ensure it only captures Module derivatives
+  // and doesn't hijack copy constructors.
+  template <typename T, typename = std::enable_if_t<
+                            std::is_base_of_v<Module, std::decay_t<T>> &&
+                            !std::is_same_v<std::decay_t<T>, ModuleHolder>>>
+  ModuleHolder(T&& module)
+      : ptr(std::make_shared<std::decay_t<T>>(std::forward<T>(module))) {}
+};
+
 /**
  * @brief Sequential container of modules.
  *
@@ -179,21 +193,16 @@ class Linear : public Module {
  */
 class Sequential : public Module {
  private:
-  /* Stored module list (currently unused; registered children are used
-   * instead). */
-  std::vector<std::pair<std::string, Module*>> modules_;
+  // We store the holders here to maintain ownership and keep the modules alive.
+  std::vector<std::pair<std::string, ModuleHolder>> modules_;
 
  public:
   /**
-   * @brief Constructs a sequential container.
-   *
-   * Child modules are registered in the order provided.
-   *
-   * Ownership is not transferred.
+   * @brief Constructs a sequential container from newly constructed modules.
    *
    * @param list Ordered sequence of named modules.
    */
-  Sequential(std::initializer_list<std::pair<std::string_view, Module*>> list);
+  Sequential(std::initializer_list<ModuleHolder> list);
 
   /**
    * @brief Applies every child module in sequence.
@@ -207,7 +216,7 @@ class Sequential : public Module {
    * @param x Input tensor.
    * @return Output of the final module.
    */
-  Tensor forward(const Tensor& x) override;
+  inline Tensor forward(const Tensor& x);
 };
 
 inline void Module::register_parameters(
@@ -243,15 +252,22 @@ inline Tensor Linear::forward(const Tensor& x) {
   return add(naive_matmul(weight, x), bias);
 }
 
-// construct sequential, the children are already registered in order
-inline Sequential::Sequential(
-    std::initializer_list<std::pair<std::string_view, Module*>> list) {
-  this->register_children(list);
+inline Sequential::Sequential(std::initializer_list<ModuleHolder> list) {
+  size_t index = 0;
+  for (const auto& holder : list) {
+    std::string name = std::to_string(index++);
+
+    /* Store the holder to manage the lifecycle */
+    modules_.emplace_back(name, holder);
+
+    /* Register the raw pointer with the base Module class */
+    this->register_children({{name, holder.ptr.get()}});
+  }
 }
 
-// call forward from each children in order
 inline Tensor Sequential::forward(const Tensor& x) {
   Tensor out = x;
+  /* Iterates through the registered children just like your original code */
   for (auto& [_, module] : this->children()) {
     out = module->forward(out);
   }
