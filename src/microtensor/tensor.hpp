@@ -5,8 +5,10 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <execution>
 #include <memory>
 #include <numeric>
+#include <random>
 #include <ranges>
 #include <span>
 #include <vector>
@@ -137,7 +139,7 @@ class Tensor {
    * @endcode
    */
   template <typename... Indices>
-    requires(std::same_as<std::decay_t<Indices>, size_t> && ...)
+    requires(std::convertible_to<std::decay_t<Indices>, size_t> && ...)
   float& operator[](Indices... indices) {
     static_assert(sizeof...(indices) > 0, "Number of indices cannot be zero!");
 
@@ -152,7 +154,7 @@ class Tensor {
    * Number of supplied indices must equal the tensor rank.
    */
   template <typename... Indices>
-    requires(std::same_as<std::decay_t<Indices>, size_t> && ...)
+    requires(std::convertible_to<std::decay_t<Indices>, size_t> && ...)
   const float& operator[](Indices... indices) const {
     static_assert(sizeof...(indices) > 0, "Number of indices cannot be zero!");
 
@@ -162,9 +164,44 @@ class Tensor {
     return data_[get_flat_index(idx_arr)];
   }
 
-  /* Operations */
+  /* Fatory/Creation Methods */
 
-  // Tensor clone();
+  /**
+   * @brief Creates a tensor filled with zeros.
+   */
+  static inline Tensor zeros(const std::vector<size_t>& shape);
+
+  /**
+   * @brief Creates a tensor filled with ones.
+   */
+  static inline Tensor ones(const std::vector<size_t>& shape);
+
+  /**
+   * @brief Creates a tensor filled with a specific scalar value.
+   */
+  static inline Tensor full(const std::vector<size_t>& shape, float value);
+
+  /**
+   * @brief Creates a 1D tensor with evenly spaced values over a specified
+   * range.
+   */
+  static inline Tensor linspace(float start, float end, size_t num);
+
+  /**
+   * @brief Creates a tensor of given shape filled with random floats in [0, 1)
+   */
+  template <std::uniform_random_bit_generator Gen>
+  static inline Tensor rand(const std::vector<size_t>& shape,
+                            Gen& rng) {  // Notice the '&'
+    Tensor ret(shape);
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    std::generate_n(ret.storage().get(), ret.numel(),
+                    [&]() { return dist(rng); });
+    return ret;
+  }
+
+  /* Operations */
+  inline Tensor clone() const;
 
   /**
    * @brief Returns the tensor shape.
@@ -188,6 +225,7 @@ class Tensor {
 
   /**
    * @brief Returns the total number of elements.
+   * once created, no operations are allowed to change numel for a tensor.
    */
   size_t numel() const noexcept;
 
@@ -259,7 +297,43 @@ inline Tensor::Tensor(std::vector<size_t> shape,
   assert(list.size() == compute_size(shape));
 
   /* Copy initializer values into storage. */
-  std::copy(list.begin(), list.end(), data_);
+  std::copy(std::execution::unseq, list.begin(), list.end(), data_);
+}
+
+inline Tensor Tensor::zeros(const std::vector<size_t>& shape) {
+  Tensor ret(shape);
+  std::fill_n(std::execution::unseq, ret.storage().get(), ret.numel(), 0);
+  return ret;
+}
+
+inline Tensor Tensor::ones(const std::vector<size_t>& shape) {
+  Tensor ret(shape);
+  std::fill_n(std::execution::unseq, ret.storage().get(), ret.numel(), 1);
+  return ret;
+}
+
+inline Tensor Tensor::full(const std::vector<size_t>& shape, float value) {
+  Tensor ret(shape);
+  std::fill_n(std::execution::unseq, ret.storage().get(), ret.numel(), value);
+  return ret;
+}
+
+inline Tensor Tensor::linspace(float start, float end, size_t num) {
+  Tensor ret({num});
+  float step = (end - start) / (num - 1);
+  std::generate_n(ret.storage().get(), num, [start, step, i = 0]() mutable {
+    return start + step * (i++);
+  });
+  return ret;
+}
+
+inline Tensor Tensor::clone() const {
+  size_t num_elem = this->numel();
+  std::shared_ptr<float[]> new_storage(
+      std::make_shared_for_overwrite<float[]>(num_elem));
+  std::copy_n(std::execution::unseq, this->storage().get(), num_elem,
+              new_storage.get());
+  return Tensor(this->shape_, this->stride_, new_storage, this->offset_);
 }
 
 inline const std::vector<size_t>& Tensor::shape() const noexcept {
