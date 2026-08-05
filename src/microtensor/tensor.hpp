@@ -11,6 +11,7 @@
 #include <random>
 #include <ranges>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace tensors {
@@ -92,6 +93,13 @@ class Tensor {
    * @return Flat index into data_.
    */
   size_t get_flat_index(std::span<const size_t> indices) const noexcept;
+
+  /**
+   * @brief constructs a view of given shape, stride and offset.
+   */
+  inline Tensor as_strided(const std::vector<size_t>& shape,
+                           const std::vector<size_t>& stride,
+                           size_t offset) const;
 
  public:
   /**
@@ -255,6 +263,20 @@ class Tensor {
    * row-major memory layout.
    */
   bool is_contiguous() const noexcept;
+
+  // view ops
+  inline Tensor view(const std::vector<size_t>& shape) const;
+  // inline Tensor reshape(const std::vector<size_t>& shape) const;
+  inline Tensor transpose(size_t dim0, size_t dim1) const;
+  // inline Tensor permute(const std::vector<size_t>& dims) const;
+  // inline Tensor narrow(size_t dim, size_t start, size_t length) const;
+  // inline Tensor slice(size_t dim, size_t start, size_t stop,
+  //                     size_t step = 1) const;
+  // inline Tensor select(size_t dim, size_t index) const;
+  // inline Tensor squeeze(std::optional<size_t> dim = {}) const;
+  // inline Tensor unsqueeze(size_t dim) const;
+  // inline Tensor expand(const std::vector<size_t>& shape) const;
+  // inline Tensor flatten(size_t start_dim = 0, size_t end_dim = -1) const;
 };
 
 inline size_t Tensor::get_flat_index(
@@ -367,6 +389,95 @@ inline bool Tensor::is_contiguous() const noexcept {
   }
 
   return true;
+}
+
+inline Tensor Tensor::as_strided(const std::vector<size_t>& shape,
+                                 const std::vector<size_t>& stride,
+                                 size_t offset) const {
+  return Tensor(shape, stride, this->storage(), offset);
+}
+
+inline Tensor Tensor::view(const std::vector<size_t>& new_shape) const {
+  assert(compute_size(new_shape) == numel());
+
+  const auto& old_shape = shape_;
+  const auto& old_stride = stride_;
+
+  // 1. Scalar case (0-dim tensor)
+  if (old_shape.empty()) {
+    std::vector<size_t> new_stride(new_shape.size(), 1);
+    return as_strided(new_shape, new_stride, this->offset());
+  }
+
+  size_t total_numel = numel();
+  bool zero_numel = (total_numel == 0);
+
+  // 2. 0-numel tensor with identical shape
+  if (zero_numel && old_shape == new_shape) {
+    return *this;
+  }
+
+  std::vector<size_t> new_stride(new_shape.size(), 0);
+
+  // 3. 0-numel tensor stride computation
+  if (zero_numel) {
+    if (!new_shape.empty()) {
+      for (size_t i = new_shape.size(); i > 0; --i) {
+        size_t view_d = i - 1;
+        if (view_d == new_shape.size() - 1) {
+          new_stride[view_d] = 1;
+        } else {
+          new_stride[view_d] = std::max<size_t>(new_shape[view_d + 1], 1) * new_stride[view_d + 1];
+        }
+      }
+    }
+    return as_strided(new_shape, new_stride, this->offset());
+  }
+
+  // 4. General case block matching algorithm
+  ssize_t view_d = static_cast<ssize_t>(new_shape.size()) - 1;
+  size_t chunk_base_stride = old_stride.back();
+  size_t tensor_numel = 1;
+  size_t view_numel = 1;
+
+  for (ssize_t tensor_d = static_cast<ssize_t>(old_shape.size()) - 1; tensor_d >= 0; --tensor_d) {
+    tensor_numel *= old_shape[tensor_d];
+
+    if (tensor_d == 0 ||
+        (old_shape[tensor_d - 1] != 1 &&
+         old_stride[tensor_d - 1] != tensor_numel * chunk_base_stride)) {
+      
+      while (view_d >= 0 && (view_numel < tensor_numel || new_shape[view_d] == 1)) {
+        new_stride[view_d] = view_numel * chunk_base_stride;
+        view_numel *= new_shape[view_d];
+        --view_d;
+      }
+
+      if (view_numel != tensor_numel) {
+        throw std::runtime_error("view(): incompatible shape");
+      }
+
+      if (tensor_d > 0) {
+        chunk_base_stride = old_stride[tensor_d - 1];
+        tensor_numel = 1;
+        view_numel = 1;
+      }
+    }
+  }
+
+  if (view_d != -1) {
+    throw std::runtime_error("view(): incompatible shape");
+  }
+
+  return as_strided(new_shape, new_stride, this->offset());
+}
+
+inline Tensor Tensor::transpose(size_t dim0, size_t dim1) const {
+  std::vector<size_t> new_shape = this->shape();
+  std::vector<size_t> new_stride = this->stride();
+  std::swap(new_shape[dim0], new_shape[dim1]);
+  std::swap(new_stride[dim0], new_stride[dim1]);
+  return this->as_strided(new_shape, new_stride, this->offset());
 }
 
 } /* namespace tensors */

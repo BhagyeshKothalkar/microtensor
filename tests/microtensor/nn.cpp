@@ -90,7 +90,7 @@ TEST_F(TensorTests, TestLinearLayer) {
   ASSERT_NE(b, nullptr);
 
   // Verify weights and bias shapes are constructed correctly
-  std::vector<size_t> expected_w_shape = {out_features, in_features};
+  std::vector<size_t> expected_w_shape = {in_features, out_features};
   std::vector<size_t> expected_b_shape = {out_features};
   EXPECT_EQ(w->shape(), expected_w_shape);
   EXPECT_EQ(b->shape(), expected_b_shape);
@@ -111,7 +111,7 @@ TEST_F(TensorTests, TestLinearLayer) {
   size_t rand_out = dim_dist(gen);
 
   Linear rand_linear(rand_in, rand_out);
-  Tensor rand_x({rand_in});
+  Tensor rand_x({1, rand_in});
 
   EXPECT_EQ(rand_linear.parameters().size(), 2);
   EXPECT_NO_THROW({ rand_linear.forward(rand_x); });

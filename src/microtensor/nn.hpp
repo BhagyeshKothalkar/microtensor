@@ -216,12 +216,27 @@ inline const std::vector<std::pair<std::string, Tensor*>>& Module::parameters()
 }
 
 inline Linear::Linear(size_t in_dim, size_t out_dim)
-    : weight({out_dim, in_dim}), bias({out_dim}) {
+    : weight({in_dim, out_dim}), bias({out_dim}) {
   register_parameters({{"weight", &weight}, {"bias", &bias}});
 }
 
 inline Tensor Linear::forward(const Tensor& x) {
-  return functional::add_(functional::naive_matmul(weight, x), bias);
+  bool squeeze = false;
+  Tensor input = x;
+
+  if (input.ndim() == 1) {
+    input = input.view({1, input.shape()[0]});
+    squeeze = true;
+  }
+
+  Tensor out = functional::naive_matmul(input, weight);
+  out = functional::add_(out, bias);
+
+  if (squeeze) {
+    out = out.view({out.shape()[1]});
+  }
+
+  return out;
 }
 
 inline Sequential::Sequential(std::initializer_list<ModuleHolder> list) {

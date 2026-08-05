@@ -315,3 +315,171 @@ TEST_F(TensorTests, TestContiguityAndMetadata) {
   EXPECT_EQ(rand_t.shape(), rand_s);
   EXPECT_EQ(rand_t.stride(), compute_strides(rand_s));
 }
+
+TEST_F(TensorTests, ViewFunctionality) {
+  // =========================================================================
+  // 1. HANDWRITTEN EDGE CASES
+  // =========================================================================
+
+  // --- Case A: Identity View (Same Shape) ---
+  {
+    std::vector<size_t> shape = {2, 3, 4};
+    tensors::Tensor t = tensors::Tensor::rand(shape, gen);
+    tensors::Tensor v = t.view(shape);
+
+    EXPECT_EQ(v.shape(), shape);
+    EXPECT_EQ(v.stride(), t.stride());
+    EXPECT_EQ(v.numel(), t.numel());
+    EXPECT_EQ(v.offset(), t.offset());
+  }
+
+  // --- Case B: Flattening Dimensions (1D View) ---
+  {
+    std::vector<size_t> orig_shape = {2, 3, 4};
+    tensors::Tensor t = tensors::Tensor::rand(orig_shape, gen);
+    std::vector<size_t> new_shape = {24};
+    tensors::Tensor v = t.view(new_shape);
+
+    EXPECT_EQ(v.shape(), new_shape);
+    EXPECT_EQ(v.stride(), (std::vector<size_t>{1}));
+    EXPECT_EQ(v.numel(), t.numel());
+    EXPECT_EQ(v.offset(), t.offset());
+  }
+
+  // --- Case C: Unflattening Dimensions (Expanding Rank) ---
+  {
+    std::vector<size_t> orig_shape = {24};
+    tensors::Tensor t = tensors::Tensor::rand(orig_shape, gen);
+    std::vector<size_t> new_shape = {2, 3, 4};
+    tensors::Tensor v = t.view(new_shape);
+
+    EXPECT_EQ(v.shape(), new_shape);
+    EXPECT_EQ(v.stride(), (std::vector<size_t>{12, 4, 1}));
+    EXPECT_EQ(v.numel(), t.numel());
+  }
+
+  // --- Case D: 1-Sized / Scalar Dimensions Insertion ---
+  {
+    std::vector<size_t> orig_shape = {2, 3};
+    tensors::Tensor t = tensors::Tensor::rand(orig_shape, gen);
+    std::vector<size_t> new_shape = {1, 2, 1, 3, 1};
+    tensors::Tensor v = t.view(new_shape);
+
+    EXPECT_EQ(v.shape(), new_shape);
+    EXPECT_EQ(v.stride(), (std::vector<size_t>{6, 3, 3, 1, 1}));
+    EXPECT_EQ(v.numel(), t.numel());
+  }
+
+  // --- Case E: Transposed Non-Contiguous Tensor (Incompatible Flat View) ---
+  {
+    std::vector<size_t> orig_shape = {4, 4};
+    tensors::Tensor t = tensors::Tensor::rand(orig_shape, gen);
+
+    if constexpr (requires { t.transpose(0, 1); }) {
+      tensors::Tensor tr = t.transpose(0, 1);
+      // Flattening across non-contiguous boundaries must fail
+      EXPECT_THROW(tr.view({16}), std::runtime_error);
+    }
+  }
+
+  // --- Case F: Non-Contiguous Dimension Merging Failure ---
+  {
+    std::vector<size_t> orig_shape = {2, 3, 4};
+    tensors::Tensor t = tensors::Tensor::rand(orig_shape, gen);
+
+    if constexpr (requires { t.transpose(0, 1); }) {
+      tensors::Tensor tr = t.transpose(0, 1); // shape becomes [3, 2, 4]
+      // Attempting to merge non-contiguous dimensions {3, 2} into {6} fails
+      EXPECT_THROW(tr.view({6, 4}), std::runtime_error);
+    }
+  }
+
+  // --- Case G: Singleton Round-Trip ---
+  {
+    std::vector<size_t> orig_shape = {2, 3};
+    tensors::Tensor t = tensors::Tensor::rand(orig_shape, gen);
+    tensors::Tensor v = t.view({1, 2, 1, 3, 1});
+    tensors::Tensor r = v.view({2, 3});
+
+    EXPECT_EQ(r.shape(), t.shape());
+    EXPECT_EQ(r.stride(), t.stride());
+  }
+
+  // --- Case H: Non-Contiguous Reshape Without Crossing Boundary (Allowed in PyTorch) ---
+  {
+    std::vector<size_t> orig_shape = {2, 3, 4};
+    tensors::Tensor t = tensors::Tensor::rand(orig_shape, gen);
+
+    if constexpr (requires { t.transpose(0, 1); }) {
+      tensors::Tensor tr = t.transpose(0, 1); // shape: [3, 2, 4]
+      // Splitting dim 2 (size 4) into {2, 2} does NOT cross non-contiguous boundary
+      tensors::Tensor v = tr.view({3, 2, 2, 2});
+      EXPECT_EQ(v.shape(), (std::vector<size_t>{3, 2, 2, 2}));
+    }
+  }
+
+  // =========================================================================
+  // 2. RANDOMIZED TESTS USING FIXTURE (WITH DATA INTEGRITY CHECKS)
+  // =========================================================================
+
+  const size_t num_random_iterations = 50;
+
+  for (size_t i = 0; i < num_random_iterations; ++i) {
+    tensors::Tensor t = random_tensor();
+    size_t total_elements = t.numel();
+
+    // -----------------------------------------------------------------------
+    // Random Case 1: Flattening to 1D and re-shaping to original
+    // -----------------------------------------------------------------------
+    std::vector<size_t> flat_shape = {total_elements};
+    tensors::Tensor flat_view = t.view(flat_shape);
+
+    EXPECT_EQ(flat_view.numel(), t.numel());
+    EXPECT_EQ(flat_view.shape(), flat_shape);
+    EXPECT_EQ(flat_view.offset(), t.offset());
+
+    // Verify Data Mapping via Iterators / Indexing
+    if constexpr (requires { t.data(); }) {
+      for (size_t idx = 0; idx < total_elements; ++idx) {
+        EXPECT_EQ(flat_view.data()[idx], t.data()[idx]);
+      }
+    }
+
+    // Round-trip back to original shape
+    tensors::Tensor restored_view = flat_view.view(t.shape());
+    EXPECT_EQ(restored_view.shape(), t.shape());
+    EXPECT_EQ(restored_view.stride(), t.stride());
+
+    // -----------------------------------------------------------------------
+    // Random Case 2: Factorizing total elements into valid random dimensions
+    // -----------------------------------------------------------------------
+    std::vector<size_t> random_new_shape;
+    size_t rem = total_elements;
+
+    std::uniform_int_distribution<size_t> factor_distrib(1, 4);
+    while (rem > 1) {
+      size_t factor = factor_distrib(gen);
+      while (rem % factor != 0 && factor > 1) {
+        --factor;
+      }
+      random_new_shape.push_back(factor);
+      rem /= factor;
+    }
+
+    if (random_new_shape.empty()) {
+      random_new_shape.push_back(1);
+    }
+
+    tensors::Tensor factorized_view = t.view(random_new_shape);
+    EXPECT_EQ(factorized_view.numel(), t.numel());
+    EXPECT_EQ(factorized_view.shape(), random_new_shape);
+    EXPECT_EQ(factorized_view.offset(), t.offset());
+
+    // Verify Data Mapping
+    if constexpr (requires { t.data(); }) {
+      for (size_t idx = 0; idx < total_elements; ++idx) {
+        EXPECT_EQ(factorized_view.data()[idx], t.data()[idx]);
+      }
+    }
+  }
+}
