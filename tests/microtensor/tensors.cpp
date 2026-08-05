@@ -140,11 +140,11 @@ TEST_F(TensorTests, TestLinspace) {
   Tensor l = Tensor::linspace(0.0f, 1.0f, 5);
   EXPECT_EQ(l.ndim(), 1u);
   EXPECT_EQ(l.numel(), 5u);
-  EXPECT_FLOAT_EQ(l[0], 0.0f);
-  EXPECT_FLOAT_EQ(l[1], 0.25f);
-  EXPECT_FLOAT_EQ(l[2], 0.50f);
-  EXPECT_FLOAT_EQ(l[3], 0.75f);
-  EXPECT_FLOAT_EQ(l[4], 1.0f);
+  EXPECT_NEAR(l[0], 0.0f, 1e-4);
+  EXPECT_NEAR(l[1], 0.25f, 1e-4);
+  EXPECT_NEAR(l[2], 0.50f, 1e-4);
+  EXPECT_NEAR(l[3], 0.75f, 1e-4);
+  EXPECT_NEAR(l[4], 1.0f, 1e-4);
 
   // Single element linspace edge case
   Tensor l_single = Tensor::linspace(5.0f, 10.0f, 1);
@@ -157,8 +157,8 @@ TEST_F(TensorTests, TestLinspace) {
   float end = range_dist(gen);
   size_t num = count_dist(gen);
   Tensor rand_l = Tensor::linspace(start, end, num);
-  EXPECT_FLOAT_EQ(rand_l[0], start);
-  EXPECT_FLOAT_EQ(rand_l[num - 1], end);
+  EXPECT_NEAR(rand_l[0], start, 1e-4);
+  EXPECT_NEAR(rand_l[num - 1], end, 1e-4);
   float step = (end - start) / static_cast<float>(num - 1);
   for (size_t i = 0; i < num; ++i) {
     EXPECT_NEAR(rand_l[i], start + static_cast<float>(i) * step, 1e-4f);

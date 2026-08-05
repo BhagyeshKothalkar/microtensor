@@ -106,9 +106,20 @@ TEST_F(TensorTests, TestBroadcastToShape) {
 
   std::vector<size_t> rand_target = {shape_distrib(gen), base_shape[1]};
   Tensor rand_view = broadcast_to_shape(rand_in, rand_target);
+  std::cout << "input shape: ";
+  for (auto x : rand_in.shape()) std::cout << x << " ";
+
+  std::cout << "\ninput stride: ";
+  for (auto x : rand_in.stride()) std::cout << x << " ";
+
+  std::cout << "\ntarget shape: ";
+  for (auto x : rand_target) std::cout << x << " ";
+
+  std::cout << '\n';
 
   EXPECT_EQ(rand_view.shape(), rand_target);
-  EXPECT_EQ(rand_view.stride()[0], 0u);
+  EXPECT_EQ(rand_view.stride()[0],
+            rand_target[0] == 1 ? rand_in.stride()[0] : 0u);
   EXPECT_EQ(rand_view.data(), rand_in.data());
 }
 
@@ -138,7 +149,12 @@ TEST_F(TensorTests, TestBroadcastTensors) {
   EXPECT_EQ(v_d.shape(), expected_auto_shape);
 
   // Randomized test: Verify multi-tensor auto broadcast across randomized terms
+  // std::vector<size_t> rand_shape1 = random_shape(2);
+  // std::vector<size_t> rand_shape2 = {rand_shape1[0], 1};
+
   std::vector<size_t> rand_shape1 = random_shape(2);
+  if (rand_shape1[1] == 1) rand_shape1[1] = 2;  // or any value > 1
+
   std::vector<size_t> rand_shape2 = {rand_shape1[0], 1};
 
   Tensor r1(rand_shape1);

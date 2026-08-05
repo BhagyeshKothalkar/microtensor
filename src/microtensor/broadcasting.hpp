@@ -186,10 +186,18 @@ inline Tensor broadcast_to_shape(const Tensor& in,
     if (i < curr_rank) {
       size_t curr_dim_size = curr_shape[curr_rank - 1 - i];
       size_t target_dim_size = target_shape[target_rank - 1 - i];
-      /* Preserve the original stride whenever dimensions already match. */
+
       if (curr_dim_size == target_dim_size) {
+        /* Preserve the original stride whenever dimensions already match. */
         new_strides[target_rank - 1 - i] = curr_strides[curr_rank - 1 - i];
+      } else if (curr_dim_size == 1) {
+        /* Broadcast dimension of size 1 to target size: stride becomes 0. */
+        new_strides[target_rank - 1 - i] = 0;
       }
+    } else {
+      /* If target rank is larger than input rank, the new leading dimensions
+         implicitly broadcast from 1, so their strides are 0. */
+      new_strides[target_rank - 1 - i] = 0;
     }
   }
 
