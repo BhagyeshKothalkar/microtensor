@@ -105,7 +105,7 @@ TEST_F(TensorTests, TestFunctionalNaiveMatmul) {
   // --- Case D: Inner Dimension Mismatch Exception ---
   {
     Tensor a({2, 3});
-    Tensor b({2, 2}); // Inner dims: 3 != 2
+    Tensor b({2, 2});  // Inner dims: 3 != 2
 
     EXPECT_THROW(functional::naive_matmul(a, b), std::runtime_error);
   }
@@ -144,7 +144,11 @@ TEST_F(TensorTests, TestFunctionalNaiveMatmul) {
     EXPECT_EQ(c.numel(), M * N);
 
     // Verify element-wise mathematical correctness against CPU reference loop
-    if constexpr (requires { a.data(); b.data(); c.data(); }) {
+    if constexpr (requires {
+                    a.data();
+                    b.data();
+                    c.data();
+                  }) {
       for (size_t m = 0; m < M; ++m) {
         for (size_t n = 0; n < N; ++n) {
           float expected_sum = 0.0f;

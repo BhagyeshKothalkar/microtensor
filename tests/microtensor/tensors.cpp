@@ -388,7 +388,7 @@ TEST_F(TensorTests, ViewFunctionality) {
     tensors::Tensor t = tensors::Tensor::rand(orig_shape, gen);
 
     if constexpr (requires { t.transpose(0, 1); }) {
-      tensors::Tensor tr = t.transpose(0, 1); // shape becomes [3, 2, 4]
+      tensors::Tensor tr = t.transpose(0, 1);  // shape becomes [3, 2, 4]
       // Attempting to merge non-contiguous dimensions {3, 2} into {6} fails
       EXPECT_THROW(tr.view({6, 4}), std::runtime_error);
     }
@@ -405,14 +405,16 @@ TEST_F(TensorTests, ViewFunctionality) {
     EXPECT_EQ(r.stride(), t.stride());
   }
 
-  // --- Case H: Non-Contiguous Reshape Without Crossing Boundary (Allowed in PyTorch) ---
+  // --- Case H: Non-Contiguous Reshape Without Crossing Boundary (Allowed in
+  // PyTorch) ---
   {
     std::vector<size_t> orig_shape = {2, 3, 4};
     tensors::Tensor t = tensors::Tensor::rand(orig_shape, gen);
 
     if constexpr (requires { t.transpose(0, 1); }) {
-      tensors::Tensor tr = t.transpose(0, 1); // shape: [3, 2, 4]
-      // Splitting dim 2 (size 4) into {2, 2} does NOT cross non-contiguous boundary
+      tensors::Tensor tr = t.transpose(0, 1);  // shape: [3, 2, 4]
+      // Splitting dim 2 (size 4) into {2, 2} does NOT cross non-contiguous
+      // boundary
       tensors::Tensor v = tr.view({3, 2, 2, 2});
       EXPECT_EQ(v.shape(), (std::vector<size_t>{3, 2, 2, 2}));
     }

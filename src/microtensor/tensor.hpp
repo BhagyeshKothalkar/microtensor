@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+#include "microtensor/autograd.hpp"
+
 namespace tensors {
 
 /**
@@ -84,6 +86,9 @@ class Tensor {
 
   /* Pointer to the first accessible element. */
   float* data_ = nullptr;
+
+  /* Autograd metadata (lazily allocated). */
+  mutable std::shared_ptr<AutogradMeta> autograd_meta_ = nullptr;
 
   /**
    * @brief Converts multidimensional indices into a flat index.
@@ -268,15 +273,27 @@ class Tensor {
   inline Tensor view(const std::vector<size_t>& shape) const;
   // inline Tensor reshape(const std::vector<size_t>& shape) const;
   inline Tensor transpose(size_t dim0, size_t dim1) const;
-  // inline Tensor permute(const std::vector<size_t>& dims) const;
-  // inline Tensor narrow(size_t dim, size_t start, size_t length) const;
-  // inline Tensor slice(size_t dim, size_t start, size_t stop,
-  //                     size_t step = 1) const;
-  // inline Tensor select(size_t dim, size_t index) const;
-  // inline Tensor squeeze(std::optional<size_t> dim = {}) const;
-  // inline Tensor unsqueeze(size_t dim) const;
-  // inline Tensor expand(const std::vector<size_t>& shape) const;
-  // inline Tensor flatten(size_t start_dim = 0, size_t end_dim = -1) const;
+
+  /* Factory helpers */
+  static inline Tensor zeros_like(const Tensor& t) {
+    return Tensor::zeros(t.shape());
+  }
+  static inline Tensor ones_like(const Tensor& t) {
+    return Tensor::ones(t.shape());
+  }
+
+  /* Autograd methods */
+  bool requires_grad() const noexcept;
+  void set_requires_grad(bool requires_grad) const;
+  bool is_leaf() const noexcept;
+  void set_is_leaf(bool is_leaf) const;
+  std::shared_ptr<IGradNode> grad_fn() const noexcept;
+  void set_grad_fn(std::shared_ptr<IGradNode> node) const;
+  const Tensor& grad() const;
+  Tensor& mutable_grad() const;
+  void zero_grad() const;
+  void add_grad(const Tensor& g) const;
+  void backward() const;
 };
 
 inline size_t Tensor::get_flat_index(
@@ -427,7 +444,8 @@ inline Tensor Tensor::view(const std::vector<size_t>& new_shape) const {
         if (view_d == new_shape.size() - 1) {
           new_stride[view_d] = 1;
         } else {
-          new_stride[view_d] = std::max<size_t>(new_shape[view_d + 1], 1) * new_stride[view_d + 1];
+          new_stride[view_d] = std::max<size_t>(new_shape[view_d + 1], 1) *
+                               new_stride[view_d + 1];
         }
       }
     }
@@ -440,14 +458,15 @@ inline Tensor Tensor::view(const std::vector<size_t>& new_shape) const {
   size_t tensor_numel = 1;
   size_t view_numel = 1;
 
-  for (ssize_t tensor_d = static_cast<ssize_t>(old_shape.size()) - 1; tensor_d >= 0; --tensor_d) {
+  for (ssize_t tensor_d = static_cast<ssize_t>(old_shape.size()) - 1;
+       tensor_d >= 0; --tensor_d) {
     tensor_numel *= old_shape[tensor_d];
 
     if (tensor_d == 0 ||
         (old_shape[tensor_d - 1] != 1 &&
          old_stride[tensor_d - 1] != tensor_numel * chunk_base_stride)) {
-      
-      while (view_d >= 0 && (view_numel < tensor_numel || new_shape[view_d] == 1)) {
+      while (view_d >= 0 &&
+             (view_numel < tensor_numel || new_shape[view_d] == 1)) {
         new_stride[view_d] = view_numel * chunk_base_stride;
         view_numel *= new_shape[view_d];
         --view_d;
@@ -478,6 +497,67 @@ inline Tensor Tensor::transpose(size_t dim0, size_t dim1) const {
   std::swap(new_shape[dim0], new_shape[dim1]);
   std::swap(new_stride[dim0], new_stride[dim1]);
   return this->as_strided(new_shape, new_stride, this->offset());
+}
+
+inline bool Tensor::requires_grad() const noexcept {
+  return autograd_meta_ ? autograd_meta_->requires_grad_ : false;
+}
+
+inline void Tensor::set_requires_grad(bool requires_grad) const {
+  if (requires_grad && !autograd_meta_) {
+    autograd_meta_ = std::make_shared<AutogradMeta>();
+  }
+  if (autograd_meta_) {
+    autograd_meta_->requires_grad_ = requires_grad;
+  }
+}
+
+inline bool Tensor::is_leaf() const noexcept {
+  return autograd_meta_ ? autograd_meta_->is_leaf_ : true;
+}
+
+inline void Tensor::set_is_leaf(bool is_leaf) const {
+  if (!autograd_meta_) {
+    autograd_meta_ = std::make_shared<AutogradMeta>();
+  }
+  autograd_meta_->is_leaf_ = is_leaf;
+}
+
+inline std::shared_ptr<IGradNode> Tensor::grad_fn() const noexcept {
+  return autograd_meta_ ? autograd_meta_->grad_fn_ : nullptr;
+}
+
+inline void Tensor::set_grad_fn(std::shared_ptr<IGradNode> node) const {
+  if (!autograd_meta_) {
+    autograd_meta_ = std::make_shared<AutogradMeta>();
+  }
+  autograd_meta_->grad_fn_ = std::move(node);
+  autograd_meta_->is_leaf_ = false;
+}
+
+inline const Tensor& Tensor::grad() const {
+  static const Tensor empty_tensor;
+  if (autograd_meta_ && autograd_meta_->grad_) {
+    return *autograd_meta_->grad_;
+  }
+  return empty_tensor;
+}
+
+inline Tensor& Tensor::mutable_grad() const {
+  if (!autograd_meta_) {
+    autograd_meta_ = std::make_shared<AutogradMeta>();
+  }
+  if (!autograd_meta_->grad_) {
+    autograd_meta_->grad_ = std::make_unique<Tensor>(Tensor::zeros(shape_));
+  }
+  return *autograd_meta_->grad_;
+}
+
+inline void Tensor::zero_grad() const {
+  if (autograd_meta_ && autograd_meta_->grad_) {
+    std::fill_n(autograd_meta_->grad_->data(), autograd_meta_->grad_->numel(),
+                0.0f);
+  }
 }
 
 } /* namespace tensors */

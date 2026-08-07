@@ -42,8 +42,8 @@ namespace tensors {
  * @return true if broadcasting is possible.
  */
 template <typename... Types>
-  requires(std::same_as<std::decay_t<Types>, Tensor> && ...)
-bool are_broadcastable(const Types&... tensors) {
+  requires(std::same_as<std::decay_t<Types>, Tensor> && ...) bool
+are_broadcastable(const Types&... tensors) {
   if constexpr (sizeof...(tensors) == 0) {
     return true;
   }

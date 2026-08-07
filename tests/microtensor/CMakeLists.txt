@@ -7,6 +7,7 @@ add_executable(microtensor_tests
     functional.cpp
     nn.cpp
     cpu_kernels.cpp    
+    autograd.cpp
 )
 
 target_include_directories(microtensor_tests PRIVATE 
