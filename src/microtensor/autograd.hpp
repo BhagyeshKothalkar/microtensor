@@ -1,11 +1,10 @@
 #pragma once
 
-#include <cstddef>
+#include <functional>
 #include <memory>
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 namespace tensors {
 
@@ -15,11 +14,12 @@ class Tensor;
  * @brief Thread-local state for controlling autograd graph construction.
  */
 class AutogradContext {
- private:
+private:
   inline static thread_local bool enabled_ = true;
 
- public:
+public:
   static bool is_enabled() noexcept { return enabled_; }
+
   static void set_enabled(bool enabled) noexcept { enabled_ = enabled; }
 };
 
@@ -27,15 +27,18 @@ class AutogradContext {
  * @brief RAII guard to temporarily disable autograd computation graph building.
  */
 class NoGradGuard {
- private:
+private:
   bool prev_state_;
 
- public:
-  NoGradGuard() noexcept : prev_state_(AutogradContext::is_enabled()) {
+public:
+  NoGradGuard() noexcept
+      : prev_state_(AutogradContext::is_enabled()) {
     AutogradContext::set_enabled(false);
   }
 
-  ~NoGradGuard() { AutogradContext::set_enabled(prev_state_); }
+  ~NoGradGuard() {
+    AutogradContext::set_enabled(prev_state_);
+  }
 
   NoGradGuard(const NoGradGuard&) = delete;
   NoGradGuard& operator=(const NoGradGuard&) = delete;
@@ -48,7 +51,7 @@ class NoGradGuard {
  * differentiation.
  */
 class IGradNode {
- public:
+public:
   virtual ~IGradNode() = default;
 
   /**
@@ -57,25 +60,33 @@ class IGradNode {
   virtual void backward() = 0;
 
   /**
-   * @brief Returns parent tensors captured by this node during the forward
-   * pass.
+   * @brief Invokes the callback once for every Tensor parent captured by
+   * this node during the forward pass.
+   *
+   * The Tensor type is intentionally only forward declared here. Parents
+   * are visited without materializing or returning a collection of Tensors.
    */
-  virtual std::vector<Tensor> get_parents() const = 0;
+  virtual void for_each_parent(
+      const std::function<void(const Tensor&)>& callback) const = 0;
 };
 
 namespace detail {
 
 template <typename T>
-void collect_tensor_parents(const T& item, std::vector<Tensor>& out) {
+void for_each_tensor_parent(
+    const T& item,
+    const std::function<void(const Tensor&)>& callback) {
   if constexpr (std::is_same_v<std::decay_t<T>, Tensor>) {
-    out.push_back(item);
+    callback(item);
   }
 }
 
 template <typename Tuple, std::size_t... Is>
-void collect_parents_from_tuple(const Tuple& t, std::index_sequence<Is...>,
-                                std::vector<Tensor>& out) {
-  (collect_tensor_parents(std::get<Is>(t), out), ...);
+void for_each_parent_in_tuple(
+    const Tuple& parents,
+    std::index_sequence<Is...>,
+    const std::function<void(const Tensor&)>& callback) {
+  (for_each_tensor_parent(std::get<Is>(parents), callback), ...);
 }
 
 }  // namespace detail
@@ -86,21 +97,23 @@ void collect_parents_from_tuple(const Tuple& t, std::index_sequence<Is...>,
  */
 template <typename Parents, typename BackwardFn>
 class GradNode : public IGradNode {
- public:
+public:
   const Parents parents;
   BackwardFn backward_fn;
 
   GradNode(Parents p, BackwardFn fn)
       : parents(std::move(p)), backward_fn(std::move(fn)) {}
 
-  void backward() override { backward_fn(parents); }
+  void backward() override {
+    backward_fn(parents);
+  }
 
-  std::vector<Tensor> get_parents() const override {
-    std::vector<Tensor> result;
-    detail::collect_parents_from_tuple(
-        parents, std::make_index_sequence<std::tuple_size_v<Parents>>{},
-        result);
-    return result;
+  void for_each_parent(
+      const std::function<void(const Tensor&)>& callback) const override {
+    detail::for_each_parent_in_tuple(
+        parents,
+        std::make_index_sequence<std::tuple_size_v<Parents>>{},
+        callback);
   }
 };
 
@@ -117,13 +130,16 @@ auto make_parents(Args&&... args) {
  * instances.
  */
 template <typename Parents, typename BackwardFn>
-std::shared_ptr<IGradNode> make_grad_node(Parents&& parents,
-                                          BackwardFn&& backward_fn) {
+std::shared_ptr<IGradNode> make_grad_node(
+    Parents&& parents,
+    BackwardFn&& backward_fn) {
   using ParentsDecayed = std::decay_t<Parents>;
   using BackwardFnDecayed = std::decay_t<BackwardFn>;
 
-  return std::make_shared<GradNode<ParentsDecayed, BackwardFnDecayed>>(
-      std::forward<Parents>(parents), std::forward<BackwardFn>(backward_fn));
+  return std::make_shared<
+      GradNode<ParentsDecayed, BackwardFnDecayed>>(
+      std::forward<Parents>(parents),
+      std::forward<BackwardFn>(backward_fn));
 }
 
 /**
