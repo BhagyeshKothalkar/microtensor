@@ -1,4 +1,7 @@
+#include <iostream>
+#include <ostream>
 #include <stdexcept>
+#include <string>
 
 #include "microtensor/autograd.hpp"
 #include "microtensor/cpu_kernels.hpp"
@@ -124,7 +127,15 @@ std::vector<size_t> compute_view_stride(const std::vector<size_t>& old_shape,
 };  // namespace
 
 Tensor Tensor::view(const std::vector<size_t>& new_shape) const {
-  assert(compute_size(new_shape) == numel());
+  if (compute_size(new_shape) != numel()) {
+    for (auto i : new_shape) {
+      std::cout << i << " ";
+    }
+    std::cout << std::endl;
+    throw std::runtime_error("size mismatch, " +
+                             std::to_string(compute_size(new_shape)) + " " +
+                             std::to_string(numel()));
+  }
 
   Tensor result;
 
@@ -142,6 +153,8 @@ Tensor Tensor::view(const std::vector<size_t>& new_shape) const {
   }
 
   if (AutogradContext::is_enabled() && requires_grad()) {
+    result.set_requires_grad(true);
+
     auto parents = make_parents(*this);
     auto backward = [out = result,
                      original_shape = shape_](const auto& parents) {
@@ -155,7 +168,6 @@ Tensor Tensor::view(const std::vector<size_t>& new_shape) const {
       }
     };
 
-    result.set_requires_grad(true);
     result.set_grad_fn(make_grad_node(std::move(parents), backward));
   }
 
