@@ -1,20 +1,10 @@
-/**
- * @file nn.hpp
- * @brief Minimal neural network module framework.
- * This file provides a lightweight abstraction for building neural network
- * layers and composing them into larger models.
- * Every module exposes a forward() function and may register:
- *  - trainable parameters (Tensor objects),
- *  - child modules.
- * Parameter and child registration enables recursive traversal of a model
- * hierarchy without requiring RTTI or manual bookkeeping.
- */
-
 #pragma once
 
 #include <initializer_list>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -24,172 +14,101 @@
 namespace tensors {
 namespace nn {
 
-/**
- * @brief Base class for all neural network modules.
- * A Module represents any differentiable computation, such as a linear layer,
- * activation function or container.
- * Derived classes should:
- *  - register their trainable parameters,
- *  - register child modules (if any),
- *  - implement forward().
- * Example:
- * @code
- * class ReLU : public Module {
- * public:
- *     Tensor forward(const Tensor& x) override;
- * };
- * @endcode
- */
 class Module {
  private:
-  /* Named child modules. */
   std::vector<std::pair<std::string, Module*>> named_children_;
-
-  /* Named trainable parameters. */
   std::vector<std::pair<std::string, Tensor*>> named_params_;
 
- public:
-  /**
-   * @brief Virtual destructor.
-   */
-  virtual ~Module() = default;
-
-  /**
-   * @brief Registers trainable parameters.
-   * Registration does not transfer ownership. The caller is responsible for
-   * ensuring the lifetime of every Tensor exceeds that of the module.
-   * Example:
-   * @code
-   * register_parameters({
-   *     {"weight",&weight},
-   *     {"bias",&bias}
-   * });
-   * @endcode
-   * @param pairs Parameter name/pointer pairs.
-   */
+ protected:
   void register_parameters(
       std::initializer_list<std::pair<std::string_view, Tensor*>> pairs);
 
-  /**
-   * @brief Registers child modules.
-   * Registration preserves insertion order, allowing containers such as
-   * Sequential to execute children deterministically.
-   * Ownership is not transferred.
-   * @param pairs Child name/pointer pairs.
-   */
   void register_children(
       std::initializer_list<std::pair<std::string_view, Module*>> pairs);
 
-  /**
-   * @brief Returns the registered child modules.
-   * @return Immutable list of named child modules.
-   */
-  const std::vector<std::pair<std::string, Module*>>& children() const;
+ public:
+  Module() = default;
 
-  /**
-   * @brief Returns the registered trainable parameters.
-   * @return Immutable list of named parameters.
-   */
-  const std::vector<std::pair<std::string, Tensor*>>& parameters() const;
+  Module(const Module&) = delete;
+  Module& operator=(const Module&) = delete;
 
-  /**
-   * @brief Computes the module output.
-   * Every derived module must implement this function.
-   * @param x Input tensor.
-   * @return Output tensor.
-   */
+  Module(Module&&) = delete;
+  Module& operator=(Module&&) = delete;
+
+  virtual ~Module() = default;
+
+  const std::vector<std::pair<std::string, Module*>>& children() const noexcept;
+  const std::vector<std::pair<std::string, Tensor*>>& parameters()
+      const noexcept;
+
   virtual Tensor forward(const Tensor& x) = 0;
 };
 
-/**
- * @brief Fully connected affine layer.
- * Computes
- *     y = Wx + b
- * where W has shape (out_dim, in_dim) and b has shape (out_dim).
- * The weight and bias tensors are automatically registered as trainable
- * parameters.
- */
 class Linear : public Module {
  private:
-  /* Weight matrix. */
-  Tensor weight;
-
-  /* Bias vector. */
-  Tensor bias;
+  Tensor weight_;
+  Tensor bias_;
 
  public:
-  /**
-   * @brief Constructs a linear layer.
-   * Storage for the weight matrix and bias vector is allocated but left
-   * uninitialized.
-   * @param in_dim Number of input features.
-   * @param out_dim Number of output features.
-   */
   Linear(size_t in_dim, size_t out_dim);
 
-  /**
-   * @brief Applies the affine transformation.
-   * Computes
-   *     weight × x + bias
-   * @param x Input tensor.
-   * @return Layer output.
-   */
   Tensor forward(const Tensor& x) override;
+
+  Tensor& weight() noexcept { return weight_; }
+  const Tensor& weight() const noexcept { return weight_; }
+
+  Tensor& bias() noexcept { return bias_; }
+  const Tensor& bias() const noexcept { return bias_; }
 };
 
 class ModuleHolder {
  public:
   std::shared_ptr<Module> ptr;
 
-  // Template constructor that accepts ANY object derived from Module by
-  // value/rvalue. We use SFINAE to ensure it only captures Module derivatives
-  // and doesn't hijack copy constructors.
   template <typename T, typename = std::enable_if_t<
                             std::is_base_of_v<Module, std::decay_t<T>> &&
-                            !std::is_same_v<std::decay_t<T>, ModuleHolder>>>
-  ModuleHolder(T&& module)
+                            !std::is_same_v<Module, std::decay_t<T>>>>
+  explicit ModuleHolder(T&& module)
       : ptr(std::make_shared<std::decay_t<T>>(std::forward<T>(module))) {}
+
+  explicit ModuleHolder(std::shared_ptr<Module> module)
+      : ptr(std::move(module)) {}
+
+  ModuleHolder(const ModuleHolder&) = default;
+  ModuleHolder& operator=(const ModuleHolder&) = default;
+
+  ModuleHolder(ModuleHolder&&) noexcept = default;
+  ModuleHolder& operator=(ModuleHolder&&) noexcept = default;
+
+  Module& operator*() noexcept { return *ptr; }
+  const Module& operator*() const noexcept { return *ptr; }
+
+  Module* operator->() noexcept { return ptr.get(); }
+  const Module* operator->() const noexcept { return ptr.get(); }
+
+  explicit operator bool() const noexcept { return static_cast<bool>(ptr); }
 };
 
-/**
- * @brief Sequential container of modules.
- * Executes each registered child module in insertion order, passing the
- * output of one module as the input to the next.
- * Example:
- * @code
- * Sequential model({
- *     {"fc1",&fc1},
- *     {"relu",&relu},
- *     {"fc2",&fc2}
- * });
- * @endcode
- */
 class Sequential : public Module {
  private:
-  // We store the holders here to maintain ownership and keep the modules alive.
   std::vector<std::pair<std::string, ModuleHolder>> modules_;
 
  public:
-  /**
-   * @brief Constructs a sequential container from newly constructed modules.
+  Sequential(std::initializer_list<ModuleHolder> modules);
 
-   * @param list Ordered sequence of named modules.
-   */
-  Sequential(std::initializer_list<ModuleHolder> list);
+  Sequential(const Sequential&) = delete;
+  Sequential& operator=(const Sequential&) = delete;
 
-  /**
-   * @brief Applies every child module in sequence.
-   * Equivalent to
-   * @code
-   * y = m_n(...m_2(m_1(x)))
-   * @endcode
-   * @param x Input tensor.
-   * @return Output of the final module.
-   */
-  inline Tensor forward(const Tensor& x);
+  Sequential(Sequential&&) = delete;
+  Sequential& operator=(Sequential&&) = delete;
+
+  Tensor forward(const Tensor& x) override;
+
+  const std::vector<std::pair<std::string, ModuleHolder>>& modules()
+      const noexcept {
+    return modules_;
+  }
 };
-
-/* implementations */
 
 inline void Module::register_parameters(
     std::initializer_list<std::pair<std::string_view, Tensor*>> pairs) {
@@ -206,22 +125,26 @@ inline void Module::register_children(
 }
 
 inline const std::vector<std::pair<std::string, Module*>>& Module::children()
-    const {
+    const noexcept {
   return named_children_;
 }
 
 inline const std::vector<std::pair<std::string, Tensor*>>& Module::parameters()
-    const {
+    const noexcept {
   return named_params_;
 }
 
 inline Linear::Linear(size_t in_dim, size_t out_dim)
-    : weight({in_dim, out_dim}), bias({out_dim}) {
-  register_parameters({{"weight", &weight}, {"bias", &bias}});
+    : weight_({in_dim, out_dim}), bias_({out_dim}) {
+  register_parameters({
+      {"weight", &weight_},
+      {"bias", &bias_},
+  });
 }
 
 inline Tensor Linear::forward(const Tensor& x) {
   bool squeeze = false;
+
   Tensor input = x;
 
   if (input.ndim() == 1) {
@@ -229,8 +152,9 @@ inline Tensor Linear::forward(const Tensor& x) {
     squeeze = true;
   }
 
-  Tensor out = functional::naive_matmul(input, weight);
-  out = functional::add_(out, bias);
+  Tensor out = functional::matmul(input, weight_);
+
+  out = functional::add(out, bias_);
 
   if (squeeze) {
     out = out.view({out.shape()[1]});
@@ -239,25 +163,31 @@ inline Tensor Linear::forward(const Tensor& x) {
   return out;
 }
 
-inline Sequential::Sequential(std::initializer_list<ModuleHolder> list) {
+inline Sequential::Sequential(std::initializer_list<ModuleHolder> modules) {
   size_t index = 0;
-  for (const auto& holder : list) {
+
+  for (const auto& holder : modules) {
+    if (!holder.ptr) {
+      continue;
+    }
+
     std::string name = std::to_string(index++);
 
-    /* Store the holder to manage the lifecycle */
     modules_.emplace_back(name, holder);
 
-    /* Register the raw pointer with the base Module class */
-    this->register_children({{name, holder.ptr.get()}});
+    register_children({
+        {name, modules_.back().second.ptr.get()},
+    });
   }
 }
 
 inline Tensor Sequential::forward(const Tensor& x) {
   Tensor out = x;
-  /* Iterates through the registered children just like your original code */
-  for (auto& [_, module] : this->children()) {
-    out = module->forward(out);
+
+  for (auto& [_, holder] : modules_) {
+    out = holder->forward(out);
   }
+
   return out;
 }
 

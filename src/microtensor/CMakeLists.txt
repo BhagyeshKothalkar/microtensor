@@ -1,7 +1,12 @@
 # 1. Change from INTERFACE to STATIC (or OBJECT)
 add_library(microtensor_lib STATIC
+    tensor_view.cpp 
     cpu_kernels.cpp
-    autograd.cpp
+    tensor_autograd.cpp
+    tensor_create.cpp
+    tensor_helpers.cpp
+    functional.cpp
+    broadcast_to_shape.cpp
 )
 
 # Specify include directories for both building and consuming

@@ -9,121 +9,119 @@
 
 namespace tensors {
 namespace cpu_kernels {
-void add(Tensor& a, const Tensor& b) {
-  TensorIterator<float, const float> itr(a, b);
-  while (itr.has_next()) {
-    auto&& [a_val, b_val] = itr.next();
-    a_val += b_val;
-  }
+
+Tensor& add(Tensor& a, const Tensor& b) {
+  TensorIterator<float, const float>(a, b).for_each(
+      [](float& x, const float& y) { x += y; });
+  return a;
 }
 
-void sub(Tensor& a, const Tensor& b) {
-  TensorIterator<float, const float> itr(a, b);
-  while (itr.has_next()) {
-    auto&& [a_val, b_val] = itr.next();
-    a_val -= b_val;
-  }
+Tensor& add(Tensor& a, const float s) {
+  TensorIterator<float>(a).for_each([&s](float& x) { x += s; });
+  return a;
 }
 
-void elementwise_multiply(Tensor& a, const Tensor& b) {
-  TensorIterator<float, const float> itr(a, b);
-  while (itr.has_next()) {
-    auto&& [a_val, b_val] = itr.next();
-    a_val *= b_val;
-  }
+Tensor& sub(Tensor& a, const Tensor& b) {
+  TensorIterator<float, const float>(a, b).for_each(
+      [](float& x, const float& y) { x -= y; });
+  return a;
 }
 
-void elementwise_div(Tensor& a, const Tensor& b) {
-  TensorIterator<float, const float> itr(a, b);
-  while (itr.has_next()) {
-    auto&& [a_val, b_val] = itr.next();
-    a_val /= b_val;
-  }
+Tensor& sub(Tensor& a, const float s) {
+  TensorIterator<float>(a).for_each([&s](float& x) { x -= s; });
+  return a;
 }
 
-void scalar_multiply(Tensor& a, const float& s) {
-  TensorIterator<float> itr(a);
-  while (itr.has_next()) {
-    auto&& [a_val] = itr.next();
-    a_val *= s;
-  }
+Tensor& mul(Tensor& a, const Tensor& b) {
+  TensorIterator<float, const float>(a, b).for_each(
+      [](float& x, const float& y) { x *= y; });
+  return a;
 }
 
-void scalar_add(Tensor& a, const float& s) {
-  TensorIterator<float> itr(a);
-  while (itr.has_next()) {
-    auto&& [a_val] = itr.next();
-    a_val += s;
-  }
+Tensor& mul(Tensor& a, const float s) {
+  TensorIterator<float>(a).for_each([&s](float& x) { x *= s; });
+  return a;
 }
 
-// i first have to create views in a particular manner for this to work.
-void naive_matmul(const Tensor& a, const Tensor& b, Tensor& res) {
-  TensorIterator<float, const float, const float> it(res, a, b);
-  while (it.has_next()) {
-    auto&& [res_val, a_val, b_val] = it.next();
-    res_val += a_val * b_val;
-  }
+Tensor& div(Tensor& a, const Tensor& b) {
+  TensorIterator<float, const float>(a, b).for_each(
+      [](float& x, const float& y) { x /= y; });
+  return a;
 }
 
-void relu(Tensor& x) {
-  TensorIterator<float> it(x);
-  while (it.has_next()) {
-    auto&& [x_val] = it.next();
-    x_val = std::max(x_val, 0.0f);
-  }
+Tensor& div(Tensor& a, const float s) {
+  TensorIterator<float>(a).for_each([&s](float& x) { x /= s; });
+  return a;
 }
 
-void relu_backward(const Tensor& grad_out, const Tensor& input,
-                   Tensor& grad_in) {
-  TensorIterator<float, const float, const float> it(grad_in, grad_out, input);
-  while (it.has_next()) {
-    auto&& [gin_val, g_val, in_val] = it.next();
-    gin_val = (in_val > 0.0f) ? g_val : 0.0f;
-  }
+Tensor& neg(Tensor& x) {
+  TensorIterator<float>(x).for_each([](float& value) { value = -value; });
+  return x;
 }
 
-void softmax(Tensor& x) {
+Tensor& reciprocal(Tensor& x) {
+  TensorIterator<float>(x).for_each([](float& value) { value = 1 / value; });
+  return x;
+}
+
+Tensor& sin(Tensor& x) {
+  TensorIterator<float>(x).for_each(
+      [](float& value) { value = std::sin(value); });
+  return x;
+}
+
+Tensor& cos(Tensor& x) {
+  TensorIterator<float>(x).for_each(
+      [](float& value) { value = std::cos(value); });
+  return x;
+}
+
+Tensor& relu(Tensor& x) {
+  TensorIterator<float>(x).for_each(
+      [](float& value) { value = std::max(value, 0.0f); });
+  return x;
+}
+
+Tensor& softmax(Tensor& x) {
   float sum = 0;
 
-  TensorIterator<const float> it(x);
-  while (it.has_next()) {
-    auto&& [x_val] = it.next();
-    sum += std::exp(x_val);
-  }
+  TensorIterator<const float>(x).for_each(
+      [&sum](const float& val) { sum += std::exp(val); });
 
-  TensorIterator<float> it2(x);
-  while (it2.has_next()) {
-    auto&& [x_val] = it2.next();
-    x_val = std::exp(x_val) / sum;
-  }
+  TensorIterator<float>(x).for_each(
+      [sum](float& val) { val = std::exp(val) / sum; });
+  return x;
 }
 
-void sin_kernel(const Tensor& in, Tensor& out) {
-  TensorIterator<float, const float> it(out, in);
-  while (it.has_next()) {
-    auto&& [out_val, in_val] = it.next();
-    out_val = std::sin(in_val);
-  }
+Tensor& naive_matmul(const Tensor& a, const Tensor& b, Tensor& res) {
+  TensorIterator<float, const float, const float>(res, a, b).for_each(
+      [](float& res_val, const float& a_val, const float& b_val) {
+        res_val += a_val * b_val;
+      });
+  return res;
 }
 
-void cos_kernel(const Tensor& in, Tensor& out) {
-  TensorIterator<float, const float> it(out, in);
-  while (it.has_next()) {
-    auto&& [out_val, in_val] = it.next();
-    out_val = std::cos(in_val);
-  }
+Tensor& relu_backward(const Tensor& grad_out, const Tensor& input,
+                      Tensor& grad_in) {
+  TensorIterator<float, const float, const float> it(grad_in, grad_out, input);
+  it.for_each([](float& gin_val, const float& g_val, const float& in_val) {
+    gin_val = (in_val > 0.0f) ? g_val : 0.0f;
+  });
+  return grad_in;
 }
 
-void sum_kernel(const Tensor& in, Tensor& out) {
+Tensor sum(const Tensor& in) {
   float acc = 0.0f;
-  Tensor mutable_in = in;
-  TensorIterator<const float> it(mutable_in);
-  while (it.has_next()) {
-    auto&& [in_val] = it.next();
-    acc += in_val;
-  }
-  out.data()[0] = acc;
+  TensorIterator<const float>(in).for_each(
+      [&acc](const float& a_val) { acc += a_val; });
+  return Tensor({1}, {acc});
+}
+
+Tensor clone(const Tensor& a) {
+  Tensor res(a.shape());
+  TensorIterator<float, const float>(res, a).for_each(
+      [](float& dst, const float& src) { dst = src; });
+  return res;
 }
 
 };  // namespace cpu_kernels
