@@ -17,7 +17,10 @@ namespace functional {
 Tensor add(const Tensor& a, const Tensor& b) {
   auto target_shape = get_broadcast_shape(a, b);
   auto [a_bc, b_bc] = broadcast_tensors(target_shape, a, b);
-  auto result = a.clone();
+  Tensor result = Tensor::zeros(target_shape);
+
+  TensorIterator<float, const float>(result, a_bc).for_each(
+      [](float& dst, const float& src) { dst = src; });
 
   cpu_kernels::add(result, b_bc);
 

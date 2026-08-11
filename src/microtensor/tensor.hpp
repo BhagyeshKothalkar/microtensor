@@ -27,7 +27,7 @@ class Tensor {
   float* data_ = nullptr;
   mutable std::shared_ptr<AutogradMeta> autograd_meta_ = nullptr;
 
-  size_t get_flat_index(std::span<const size_t> indices) const noexcept;
+  size_t get_flat_index(std::span<const size_t> indices) const;
 
   Tensor as_strided(const std::vector<size_t>& shape,
                     const std::vector<size_t>& stride, size_t offset) const;
@@ -94,6 +94,8 @@ class Tensor {
   size_t ndim() const noexcept;
   size_t numel() const noexcept;
   bool empty() const noexcept;
+  size_t storage_size() const noexcept;
+  bool has_grad() const noexcept;
   const float* data() const noexcept;
   float* data() noexcept;
   std::shared_ptr<float[]> storage() const noexcept;

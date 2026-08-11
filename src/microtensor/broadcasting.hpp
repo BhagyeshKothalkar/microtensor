@@ -35,7 +35,9 @@ bool are_broadcastable(const Types&... tensors) {
         valid = false;
         return;
       }
-      target_dim = std::max(target_dim, curr_dim);
+      if (target_dim == 1) {
+        target_dim = curr_dim;
+      }
     };
 
     (check_dim(tensors), ...);
@@ -72,7 +74,9 @@ std::vector<size_t> get_broadcast_shape(const Types&... tensors) {
         valid = false;
         return;
       }
-      return_shape[target_idx] = std::max(target_dim, curr_dim);
+      if (target_dim == 1) {
+        return_shape[target_idx] = curr_dim;
+      }
     };
 
     (check_dim(tensors), ...);

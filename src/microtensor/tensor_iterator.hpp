@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstddef>
 #include <tuple>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -55,6 +56,17 @@ TensorIterator<Dest, Src...>::TensorIterator(Tensor& dest,
       idx_(dest.ndim(), 0),
       offsets_{},
       has_next_flag_(!dest.empty()) {
+  auto validate = [&dest](const auto& tensor) {
+    if (tensor.shape() != dest.shape() ||
+        tensor.stride().size() != dest.ndim()) {
+      throw std::invalid_argument(
+          "TensorIterator operands must match the destination shape and rank");
+    }
+  };
+  if (dest.stride().size() != dest.ndim()) {
+    throw std::invalid_argument("TensorIterator destination has invalid strides");
+  }
+  (validate(srcs), ...);
   offsets_.fill(0);
 }
 
@@ -68,6 +80,17 @@ TensorIterator<Dest, Src...>::TensorIterator(const Tensor& dest,
       idx_(dest.ndim(), 0),
       offsets_{},
       has_next_flag_(!dest.empty()) {
+  auto validate = [&dest](const auto& tensor) {
+    if (tensor.shape() != dest.shape() ||
+        tensor.stride().size() != dest.ndim()) {
+      throw std::invalid_argument(
+          "TensorIterator operands must match the destination shape and rank");
+    }
+  };
+  if (dest.stride().size() != dest.ndim()) {
+    throw std::invalid_argument("TensorIterator destination has invalid strides");
+  }
+  (validate(srcs), ...);
   offsets_.fill(0);
 }
 
@@ -79,9 +102,13 @@ bool TensorIterator<Dest, Src...>::has_next() const {
 template <typename Dest, typename... Src>
 auto TensorIterator<Dest, Src...>::next() {
   assert(has_next_flag_);
-  assert(!idx_.empty());
 
   auto curr = dereference(std::make_index_sequence<n_terms>{});
+
+  if (idx_.empty()) {
+    has_next_flag_ = false;
+    return curr;
+  }
 
   bool advanced = false;
 

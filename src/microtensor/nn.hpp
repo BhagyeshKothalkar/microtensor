@@ -198,7 +198,7 @@ inline const std::vector<std::pair<std::string, Tensor*>>& Module::parameters()
 }
 
 inline Linear::Linear(size_t in_dim, size_t out_dim)
-    : weight_({in_dim, out_dim}), bias_({out_dim}) {
+    : weight_(Tensor::zeros({in_dim, out_dim})), bias_(Tensor::zeros({out_dim})) {
   register_parameters({
       {"weight", &weight_},
       {"bias", &bias_},

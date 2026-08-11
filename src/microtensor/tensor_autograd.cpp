@@ -52,6 +52,11 @@ void Tensor::set_requires_grad(bool requires_grad) const {
   }
   if (autograd_meta_) {
     autograd_meta_->requires_grad_ = requires_grad;
+    if (!requires_grad) {
+      autograd_meta_->grad_.reset();
+      autograd_meta_->grad_fn_.reset();
+      autograd_meta_->is_leaf_ = true;
+    }
   }
 }
 
@@ -75,6 +80,7 @@ void Tensor::set_grad_fn(std::shared_ptr<IGradNode> node) const {
     autograd_meta_ = std::make_shared<AutogradMeta>();
   }
   autograd_meta_->grad_fn_ = std::move(node);
+  autograd_meta_->requires_grad_ = true;
   autograd_meta_->is_leaf_ = false;
 }
 
@@ -84,6 +90,10 @@ const Tensor& Tensor::grad() const {
     return *autograd_meta_->grad_;
   }
   return empty_tensor;
+}
+
+bool Tensor::has_grad() const noexcept {
+  return autograd_meta_ && autograd_meta_->grad_;
 }
 
 Tensor& Tensor::mutable_grad() const {

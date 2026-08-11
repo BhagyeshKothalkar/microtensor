@@ -119,7 +119,7 @@ Tensor sum(const Tensor& in) {
   float acc = 0.0f;
   TensorIterator<const float>(in).for_each(
       [&acc](const float& a_val) { acc += a_val; });
-  return Tensor({1}, {acc});
+  return Tensor({}, {acc});
 }
 
 Tensor clone(const Tensor& a) {

@@ -32,10 +32,35 @@ Tensor Tensor::clone() const {
 Tensor Tensor::as_strided(const std::vector<size_t>& shape,
                           const std::vector<size_t>& stride,
                           size_t offset) const {
-  return Tensor(shape, stride, this->storage(), offset);
+  if (shape.size() != stride.size()) {
+    throw std::invalid_argument("as_strided(): shape and stride ranks differ");
+  }
+  if (offset > max_size_) {
+    throw std::out_of_range("as_strided(): offset exceeds storage");
+  }
+  if (compute_size(shape) != 0) {
+    if (!storage_) {
+      throw std::runtime_error("as_strided(): tensor has no storage");
+    }
+    size_t last_index = offset;
+    for (size_t i = 0; i < shape.size(); ++i) {
+      const size_t extent = shape[i] - 1;
+      if (extent != 0 && stride[i] > (max_size_ - last_index) / extent) {
+        throw std::out_of_range("as_strided(): view exceeds storage");
+      }
+      last_index += extent * stride[i];
+    }
+    if (last_index >= max_size_) {
+      throw std::out_of_range("as_strided(): view exceeds storage");
+    }
+  }
+  return Tensor(shape, stride, storage_, max_size_, offset);
 }
 
 Tensor Tensor::transpose(size_t dim0, size_t dim1) const {
+  if (dim0 >= ndim() || dim1 >= ndim()) {
+    throw std::out_of_range("transpose(): dimension is out of range");
+  }
   std::vector<size_t> new_shape = this->shape();
   std::vector<size_t> new_stride = this->stride();
   std::swap(new_shape[dim0], new_shape[dim1]);

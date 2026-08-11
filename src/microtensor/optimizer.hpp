@@ -35,14 +35,7 @@ class Optimizer {
         continue;
       }
 
-      Tensor& grad = p->mutable_grad();
-
-      auto it = TensorIterator<float>(grad);
-
-      while (it.has_next()) {
-        auto [v] = it.next();
-        v = 0.0f;
-      }
+      p->zero_grad();
     }
   }
 };
@@ -59,7 +52,7 @@ class SGD : public Optimizer {
     NoGradGuard guard;
 
     for (Tensor* p : parameters_) {
-      if (p == nullptr || !p->requires_grad()) {
+      if (p == nullptr || !p->requires_grad() || !p->has_grad()) {
         continue;
       }
 
@@ -117,7 +110,7 @@ class Adam : public Optimizer {
     for (size_t i = 0; i < parameters_.size(); ++i) {
       Tensor* p = parameters_[i];
 
-      if (p == nullptr || !p->requires_grad()) {
+      if (p == nullptr || !p->requires_grad() || !p->has_grad()) {
         continue;
       }
       Tensor& m1 = momentum_1_[i];

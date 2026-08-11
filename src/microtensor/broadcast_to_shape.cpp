@@ -50,7 +50,7 @@ static Tensor sum_to_shape(const Tensor& input,
   }
 
   Tensor broadcast_result(input.shape(), broadcast_strides, result.storage(),
-                          result.offset());
+                          result.storage_size(), result.offset());
 
   TensorIterator<float, const float>(broadcast_result, input)
       .for_each([](auto& dst, const auto& src) { dst += src; });
@@ -67,6 +67,10 @@ Tensor broadcast_to_shape(const Tensor& in,
 
   const size_t target_rank = target_shape.size();
   const size_t curr_rank = curr_shape.size();
+
+  if (curr_rank > target_rank) {
+    throw std::runtime_error("broadcast_to_shape(): incompatible shapes");
+  }
 
   for (size_t i = 0; i < target_rank; ++i) {
     if (i < curr_rank) {
@@ -85,7 +89,8 @@ Tensor broadcast_to_shape(const Tensor& in,
     }
   }
 
-  Tensor result(target_shape, new_strides, in.storage(), in.offset());
+  Tensor result(target_shape, new_strides, in.storage(), in.storage_size(),
+                in.offset());
 
   if (AutogradContext::is_enabled() && in.requires_grad()) {
     auto parents = make_parents(in);
