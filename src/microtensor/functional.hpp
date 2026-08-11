@@ -27,6 +27,7 @@ Tensor reciprocal(const Tensor& a);
 Tensor sin(const Tensor& a);
 Tensor cos(const Tensor& a);
 Tensor relu(const Tensor& a);
+Tensor sqrt(const Tensor& a);
 
 Tensor sum(const Tensor& a);
 Tensor mean(const Tensor& a);

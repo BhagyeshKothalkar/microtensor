@@ -23,6 +23,7 @@ class Tensor {
   std::vector<size_t> stride_;
   size_t offset_ = 0;
   std::shared_ptr<float[]> storage_;
+  size_t max_size_;
   float* data_ = nullptr;
   mutable std::shared_ptr<AutogradMeta> autograd_meta_ = nullptr;
 
@@ -37,7 +38,7 @@ class Tensor {
   explicit Tensor(std::vector<size_t> shape);
 
   Tensor(std::vector<size_t> shape, std::vector<size_t> stride,
-         std::shared_ptr<float[]> storage, size_t offset = 0);
+         std::shared_ptr<float[]> storage, size_t max_size_, size_t offset = 0);
 
   Tensor(std::vector<size_t> shape, std::initializer_list<float> list);
 

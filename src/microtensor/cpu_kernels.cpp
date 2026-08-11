@@ -93,6 +93,11 @@ Tensor& softmax(Tensor& x) {
   return x;
 }
 
+Tensor &sqrt(Tensor &x){
+  TensorIterator<float>(x).for_each([](float&x_val){x_val = sqrtf(x_val);});
+  return x;
+}
+
 Tensor& naive_matmul(const Tensor& a, const Tensor& b, Tensor& res) {
   TensorIterator<float, const float, const float>(res, a, b).for_each(
       [](float& res_val, const float& a_val, const float& b_val) {

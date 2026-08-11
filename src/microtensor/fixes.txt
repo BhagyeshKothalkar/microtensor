@@ -1,0 +1,7 @@
+the clone and other methods are not needed separately as they are implemented with autograd as tensor methods and as broadcast_to_shape so removed
+the sin and cos accepting out arg were removed, so that all elementwise kernels are inplace. the functional sin and cos not apply the kernel on clones
+the inverted condition in view and broadcast are now fixed. 
+naive matmul code fixed.
+Tensor initialization is planned for later (regarded as not core)
+TensorIterator assumes already broadcast tensors and iterates elementwise on the dest so it is correct. 
+sqrt is implemented, has to be checked once. wired into adam. adam trains. 

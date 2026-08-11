@@ -84,7 +84,7 @@ class Adam : public Optimizer {
   float beta2_pow_ = 1.0f;
 
  public:
-  Adam(const std::vector<Tensor*>& tensors, float lr, float beta1, float beta2,
+  Adam(const std::vector<Tensor*>& tensors, float lr = 1e-3, float beta1 = 0.9, float beta2 = 0.99,
        float eps = 1e-8f)
       : Optimizer(tensors),
         lr_(lr),
@@ -133,7 +133,7 @@ class Adam : public Optimizer {
       cpu_kernels::add(m2, grad_m2);
       Tensor m1_corr = functional::div(m1, bias_correction_1);
       Tensor m2_corr = functional::div(m2, bias_correction_2);
-      Tensor denominator = functional::add(m2_corr, eps_);
+      Tensor denominator = functional::add(functional::sqrt(m2_corr), eps_);
       Tensor update = functional::div(m1_corr, denominator);
       Tensor scaled_update = functional::mul(update, lr_);
       cpu_kernels::sub(*p, scaled_update);

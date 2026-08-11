@@ -2,6 +2,10 @@
 
 #include <sched.h>
 
+#include <algorithm>
+#include <utility>
+
+#include "microtensor/autograd.hpp"
 #include "microtensor/broadcasting.hpp"
 #include "microtensor/cpu_kernels.hpp"
 #include "microtensor/tensor.hpp"
@@ -305,6 +309,27 @@ Tensor relu(const Tensor& a) {
         make_grad_node(std::move(parents), std::move(backward_fn)));
   }
 
+  return result;
+}
+Tensor sqrt(const Tensor& a) {
+  Tensor result = a.clone();
+  cpu_kernels::sqrt(result);
+
+  if (AutogradContext::is_enabled() && a.requires_grad()) {
+    result.set_requires_grad(true);
+    auto parents = make_parents(a);
+    auto backward_fn = [out = result](const auto& parents) {
+      NoGradGuard guard;
+      const auto& [lhs] = parents;
+      const Tensor& grad = out.grad();
+      if (lhs.requires_grad()) {
+        lhs.add_grad(
+            broadcast_to_shape(reciprocal(2 * out) * grad, lhs.shape()));
+      }
+    };
+    result.set_grad_fn(
+        make_grad_node(std::move(parents), std::move(backward_fn)));
+  }
   return result;
 }
 

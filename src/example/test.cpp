@@ -10,6 +10,8 @@ using namespace tensors;
 using namespace tensors::nn;
 using namespace tensors::optim;
 
+static float scalar_value(const Tensor& x) { return x.data()[0]; }
+
 static void init_linear(Linear& layer, std::mt19937& rng) {
   std::uniform_real_distribution<float> dist(-0.1f, 0.1f);
 
@@ -24,35 +26,34 @@ static void init_linear(Linear& layer, std::mt19937& rng) {
     layer.bias().data()[i] = 0.0f;
   }
 }
-
-static float scalar_value(const Tensor& x) { return x.data()[0]; }
+std::mt19937 rng(123);
 
 int main() {
-  std::mt19937 rng(123);
+  class mymodule : public Module {
+    Linear l1;
+    Linear l2;
 
-  // 5 trainable Linear layers:
-  //
-  // 4 -> 16 -> 16 -> 16 -> 8 -> 1
-  //
-  // with ReLU between each pair.
-  Linear l1(4, 16);
-  Linear l2(16, 16);
-  Linear l3(16, 16);
-  Linear l4(16, 8);
-  Linear l5(8, 1);
+   public:
+    mymodule() : l1(4, 16), l2(16, 1) {
+      init_linear(l1, rng);
+      init_linear(l2, rng);
+      register_children({{"l1", &l1}, {"l2", &l2}});
+    }
 
-  init_linear(l1, rng);
-  init_linear(l2, rng);
-  init_linear(l3, rng);
-  init_linear(l4, rng);
-  init_linear(l5, rng);
-
-  std::vector<Tensor*> params = {
-      &l1.weight(), &l1.bias(),   &l2.weight(), &l2.bias(),   &l3.weight(),
-      &l3.bias(),   &l4.weight(), &l4.bias(),   &l5.weight(), &l5.bias(),
+    Tensor forward(const Tensor& x) override {
+      return l2.forward(functional::relu(l1.forward(x)));
+    }
   };
 
-  optim::SGD optimizer(params, 0.01f);
+  mymodule model;
+
+  for (const auto& [name, param] : model.named_parameters_recursive()) {
+    std::cout << name << '\n';
+  }
+
+  // std::vector<Tensor*> params = model.
+
+  optim::Adam optimizer(model.parameters_recursive(), 0.01f);
 
   // Dummy regression data.
   Tensor x({4}, {
@@ -68,11 +69,7 @@ int main() {
 
   for (int step = 0; step < 100; ++step) {
     // Forward.
-    Tensor h1 = functional::relu(l1.forward(x));
-    Tensor h2 = functional::relu(l2.forward(h1));
-    Tensor h3 = functional::relu(l3.forward(h2));
-    Tensor h4 = functional::relu(l4.forward(h3));
-    Tensor prediction = l5.forward(h4);
+    Tensor prediction = model.forward(x);
 
     // MSE.
     Tensor diff = functional::sub(prediction, target);
@@ -83,7 +80,7 @@ int main() {
     // Backward.
     loss.backward();
 
-    // SGD.
+    // // SGD.
     optimizer.step();
     optimizer.zero_grad();
 

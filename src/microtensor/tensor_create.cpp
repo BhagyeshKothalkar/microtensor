@@ -1,4 +1,5 @@
 #include <execution>
+#include <utility>
 
 #include "microtensor/tensor.hpp"
 
@@ -9,6 +10,7 @@ Tensor::Tensor()
       stride_({0}),
       offset_(0),
       storage_(nullptr),
+      max_size_(0),
       data_(nullptr) {}
 
 Tensor::Tensor(std::vector<size_t> shape)
@@ -16,15 +18,16 @@ Tensor::Tensor(std::vector<size_t> shape)
       stride_(compute_strides(shape)),
       offset_(0),
       storage_(std::make_shared_for_overwrite<float[]>(compute_size(shape))),
+      max_size_(compute_size(shape)),
       data_(storage_.get()) {}
 
 Tensor::Tensor(std::vector<size_t> shape, std::vector<size_t> stride,
-               std::shared_ptr<float[]> storage, size_t offset)
+               std::shared_ptr<float[]> storage, size_t max_size, size_t offset)
     : shape_(std::move(shape)),
       stride_(std::move(stride)),
       offset_(offset),
       storage_(std::move(storage)),
-
+      max_size_(std::move(max_size)),
       data_(storage_.get() + offset_) {}
 
 Tensor::Tensor(std::vector<size_t> shape, std::initializer_list<float> list)

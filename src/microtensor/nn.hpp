@@ -19,6 +19,10 @@ class Module {
   std::vector<std::pair<std::string, Module*>> named_children_;
   std::vector<std::pair<std::string, Tensor*>> named_params_;
 
+  void collect_named_parameters(
+      const std::string& prefix,
+      std::vector<std::pair<std::string, Tensor*>>& result) const;
+
  protected:
   void register_parameters(
       std::initializer_list<std::pair<std::string_view, Tensor*>> pairs);
@@ -40,6 +44,12 @@ class Module {
   const std::vector<std::pair<std::string, Module*>>& children() const noexcept;
   const std::vector<std::pair<std::string, Tensor*>>& parameters()
       const noexcept;
+
+  // Depth-first, registration-order traversal.
+  std::vector<std::pair<std::string, Tensor*>> named_parameters_recursive()
+      const;
+
+  std::vector<Tensor*> parameters_recursive() const;
 
   virtual Tensor forward(const Tensor& x) = 0;
 };
@@ -122,6 +132,59 @@ inline void Module::register_children(
   for (const auto& [name, child] : pairs) {
     named_children_.emplace_back(std::string(name), child);
   }
+}
+
+inline void Module::collect_named_parameters(
+    const std::string& prefix,
+    std::vector<std::pair<std::string, Tensor*>>& result) const {
+  // Parameters belonging directly to this module.
+  for (const auto& [name, param] : named_params_) {
+    std::string full_name;
+
+    if (prefix.empty()) {
+      full_name = name;
+    } else {
+      full_name = prefix + "." + name;
+    }
+
+    result.emplace_back(std::move(full_name), param);
+  }
+
+  // Then recursively visit children in registration order.
+  for (const auto& [name, child] : named_children_) {
+    if (child == nullptr) {
+      continue;
+    }
+
+    std::string child_prefix;
+
+    if (prefix.empty()) {
+      child_prefix = name;
+    } else {
+      child_prefix = prefix + "." + name;
+    }
+
+    child->collect_named_parameters(child_prefix, result);
+  }
+}
+
+inline std::vector<std::pair<std::string, Tensor*>>
+Module::named_parameters_recursive() const {
+  std::vector<std::pair<std::string, Tensor*>> result;
+
+  collect_named_parameters("", result);
+
+  return result;
+}
+
+inline std::vector<Tensor*> Module::parameters_recursive() const {
+  std::vector<Tensor*> result;
+
+  for (const auto& [_, param] : named_parameters_recursive()) {
+    result.push_back(param);
+  }
+
+  return result;
 }
 
 inline const std::vector<std::pair<std::string, Module*>>& Module::children()
