@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <limits>
 
 #include "tensor.hpp"
 #include "tensor_iterator.hpp"
@@ -83,13 +84,17 @@ Tensor& relu(Tensor& x) {
 }
 
 Tensor& softmax(Tensor& x) {
-  float sum = 0;
+  float max_value = -std::numeric_limits<float>::infinity();
 
   TensorIterator<const float>(x).for_each(
-      [&sum](const float& val) { sum += std::exp(val); });
+      [&max_value](const float& val) { max_value = std::max(max_value, val); });
+
+  float sum = 0.0f;
+  TensorIterator<const float>(x).for_each(
+      [&sum, max_value](const float& val) { sum += std::exp(val - max_value); });
 
   TensorIterator<float>(x).for_each(
-      [sum](float& val) { val = std::exp(val) / sum; });
+      [sum, max_value](float& val) { val = std::exp(val - max_value) / sum; });
   return x;
 }
 

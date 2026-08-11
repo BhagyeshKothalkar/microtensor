@@ -3,6 +3,7 @@
 #include <sched.h>
 
 #include <algorithm>
+#include <stdexcept>
 #include <utility>
 
 #include "microtensor/autograd.hpp"
@@ -358,6 +359,9 @@ Tensor sum(const Tensor& a) {
 }
 
 Tensor mean(const Tensor& a) {
+  if (a.empty()) {
+    throw std::invalid_argument("mean(): empty tensors have no mean");
+  }
   Tensor result = sum(a);
   float n = static_cast<float>(a.numel());
   return mul(result, 1.0f / n);
