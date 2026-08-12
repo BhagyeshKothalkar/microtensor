@@ -1,10 +1,10 @@
-#include "microtensor/tensor.hpp"
+#include "microtensor/functional.hpp"
 #include "microtensor/tensor_iterator.hpp"
 
 namespace tensors {
 
-static Tensor sum_to_shape(const Tensor& input,
-                           const std::vector<size_t>& target_shape) {
+[[maybe_unused]] static Tensor legacy_sum_to_shape(const Tensor& input,
+                                  const std::vector<size_t>& target_shape) {
   const auto& input_shape = input.shape();
 
   if (input_shape == target_shape) {
@@ -101,7 +101,7 @@ Tensor broadcast_to_shape(const Tensor& in,
       const Tensor grad = out.grad();
 
       if (input.requires_grad()) {
-        auto input_grad = sum_to_shape(grad, input.shape());
+        auto input_grad = functional::detail::sum_to_shape(grad, input.shape());
         input.add_grad(input_grad);
       }
     };

@@ -29,6 +29,19 @@ static void init_linear(Linear& layer, std::mt19937& rng) {
 std::mt19937 rng(123);
 
 int main() {
+  // Focused feature harness; these APIs are intentionally added by this change.
+  Tensor indexed({2, 3}, {1, 2, 3, 4, 5, 6});
+  if (indexed[-1, -1] != 6.0f) return 1;
+  auto permuted = indexed.permute({1, 0});
+  if (permuted[-1, -1] != 6.0f) return 2;
+  auto reduced = functional::sum(indexed, {-1});
+  if (reduced.shape() != std::vector<size_t>{2} || reduced[0] != 6.0f) return 3;
+  auto normalized = functional::rmsnorm(indexed, {-1});
+  if (normalized.shape() != indexed.shape()) return 4;
+  auto batched = functional::matmul(Tensor::ones({2, 3, 4}), Tensor::ones({2, 4, 5}));
+  if (batched.shape() != std::vector<size_t>{2, 3, 5} || batched[0, 0, 0] != 4.0f) return 5;
+  return 0;
+
   class mymodule : public Module {
     Linear l1;
     Linear l2;

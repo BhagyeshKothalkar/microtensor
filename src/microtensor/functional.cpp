@@ -3,6 +3,8 @@
 #include <sched.h>
 
 #include <algorithm>
+#include <cmath>
+#include <numbers>
 #include <stdexcept>
 #include <utility>
 
@@ -337,18 +339,35 @@ Tensor sqrt(const Tensor& a) {
   return result;
 }
 
-Tensor sum(const Tensor& a) {
-  Tensor result = cpu_kernels::sum(a);
+Tensor gelu(const Tensor& a) {
+  Tensor result(a.shape());
+  TensorIterator<float, const float>(result, a).for_each([](float& y, const float& x) { y = 0.5f * x * (1.0f + std::erf(x / std::sqrt(2.0f))); });
+  if (AutogradContext::is_enabled() && a.requires_grad()) { result.set_requires_grad(true); auto parents = make_parents(a); auto backward = [out = result](const auto& parents) { NoGradGuard guard; const auto& [x] = parents; if (x.requires_grad()) { Tensor g(x.shape()); TensorIterator<float, const float, const float>(g, out.grad(), x).for_each([](float& dst, const float& dy, const float& v) { const float cdf = 0.5f * (1.0f + std::erf(v / std::sqrt(2.0f))); const float pdf = std::exp(-0.5f * v * v) / std::sqrt(2.0f * std::numbers::pi_v<float>); dst = dy * (cdf + v * pdf); }); x.add_grad(g); } }; result.set_grad_fn(make_grad_node(std::move(parents), std::move(backward))); }
+  return result;
+}
+
+namespace detail {
+index_t normalize_idx(const Tensor& tensor, index_t idx, size_t) { if (idx < 0) idx += static_cast<index_t>(tensor.ndim()); if (idx < 0 || idx >= static_cast<index_t>(tensor.ndim())) throw std::out_of_range("dimension is out of range"); return idx; }
+std::vector<index_t> normalize_idx(const Tensor& tensor, const std::vector<index_t>& idx) { std::vector<index_t> out; for (auto dim : idx) { dim = normalize_idx(tensor, dim, 0); if (std::find(out.begin(), out.end(), dim) != out.end()) throw std::invalid_argument("duplicate reduction dimension"); out.push_back(dim); } return out; }
+Tensor sum_to_shape(const Tensor& input, const std::vector<size_t>& target) { if (input.shape() == target) return input; if (target.size() > input.ndim()) throw std::invalid_argument("sum_to_shape(): target rank cannot exceed input rank"); std::vector<size_t> aligned = target; aligned.insert(aligned.begin(), input.ndim() - target.size(), 1); for (size_t i=0;i<input.ndim();++i) if (aligned[i] != 1 && aligned[i] != input.shape()[i]) throw std::invalid_argument("sum_to_shape(): incompatible shapes"); Tensor out = Tensor::zeros(aligned); TensorIterator<float,const float>(broadcast_to_shape(out,input.shape()),input).for_each([](float& d,const float& s){d+=s;}); return aligned == target ? out : out.view(target); }
+}  // namespace detail
+
+Tensor sum(const Tensor& a) { std::vector<index_t> dims; for (size_t i=0;i<a.ndim();++i) dims.push_back(static_cast<index_t>(i)); return sum(a, dims); }
+Tensor sum(const Tensor& a, const std::vector<index_t>& dims) {
+  const auto normalized = detail::normalize_idx(a, dims); std::vector<bool> reduce(a.ndim(), false); for(auto d:normalized) reduce[d]=true;
+  std::vector<size_t> keep = a.shape(); for(size_t i=0;i<a.ndim();++i) if(reduce[i]) keep[i]=1;
+  Tensor kept = Tensor::zeros(keep); TensorIterator<float,const float>(broadcast_to_shape(kept,a.shape()),a).for_each([](float& d,const float& s){d+=s;});
+  std::vector<size_t> shape; for(size_t i=0;i<a.ndim();++i) if(!reduce[i]) shape.push_back(a.shape()[i]); Tensor result = kept.view(shape);
 
   if (AutogradContext::is_enabled() && a.requires_grad()) {
     result.set_requires_grad(true);
     auto parents = make_parents(a);
-    auto backward_fn = [out = result](const auto& parents) {
+    auto backward_fn = [out = result, keep](const auto& parents) {
       NoGradGuard guard;
       const auto& [lhs] = parents;
       const Tensor& grad = out.grad();
       if (lhs.requires_grad()) {
-        lhs.add_grad(broadcast_to_shape(grad, lhs.shape()));
+        lhs.add_grad(broadcast_to_shape(grad.view(keep), lhs.shape()));
       }
     };
     result.set_grad_fn(
@@ -358,33 +377,17 @@ Tensor sum(const Tensor& a) {
   return result;
 }
 
-Tensor mean(const Tensor& a) {
+Tensor mean(const Tensor& a) { std::vector<index_t> dims; for(size_t i=0;i<a.ndim();++i) dims.push_back(static_cast<index_t>(i)); return mean(a,dims); }
+Tensor mean(const Tensor& a, const std::vector<index_t>& dims) {
   if (a.empty()) {
     throw std::invalid_argument("mean(): empty tensors have no mean");
   }
-  Tensor result = sum(a);
-  float n = static_cast<float>(a.numel());
-  return mul(result, 1.0f / n);
+  float n = 1.0f; for(auto dim: detail::normalize_idx(a,dims)) n *= static_cast<float>(a.shape()[dim]); return mul(sum(a, dims), 1.0f / n);
 }
 
-static Tensor naive_matmul(const Tensor& a, const Tensor& b) {
-  if (!(a.ndim() == 2 && b.ndim() == 2 && a.shape()[1] == b.shape()[0])) {
-    throw(std::runtime_error("" + std::to_string(a.ndim()) + " " +
-                             std::to_string(b.ndim())));
-  }
-  size_t i = a.shape()[0], k = a.shape()[1], j = b.shape()[1];
-  Tensor a_view = a.view({i, k, 1});
-  Tensor b_view = b.view({1, k, j});
+Tensor rmsnorm(const Tensor& a, const std::vector<index_t>& dims, float eps) { if (eps < 0) throw std::invalid_argument("rmsnorm(): eps must be non-negative"); return div(a, sqrt(add(mean(mul(a,a),dims), eps))); }
 
-  auto [_, tensors] = broadcast_tensors(a_view, b_view);
-  auto& [A, B] = tensors;
-
-  Tensor res = Tensor::zeros({i, j});
-  Tensor res_view = broadcast_to_shape(res.view({i, 1, j}), {i, k, j});
-
-  cpu_kernels::naive_matmul(A, B, res_view);
-  return res;
-}
+static Tensor naive_matmul(const Tensor& a, const Tensor& b) { if (a.ndim()<2 || b.ndim()<2 || a.shape().back()!=b.shape()[b.ndim()-2]) throw std::invalid_argument("matmul(): incompatible matrix shapes"); const size_t m=a.shape()[a.ndim()-2], k=a.shape().back(), n=b.shape().back(); std::vector<size_t> ab(a.shape().begin(),a.shape().end()-2), bb(b.shape().begin(),b.shape().end()-2); Tensor aa(ab), xb(bb); auto batch=get_broadcast_shape(aa,xb); std::vector<size_t> out=batch; out.push_back(m);out.push_back(n); Tensor result=Tensor::zeros(out); std::vector<size_t> domain=batch;domain.push_back(m);domain.push_back(k);domain.push_back(n); std::vector<size_t> as(domain.size(),0), bs(domain.size(),0), rs(domain.size(),0); const size_t base=batch.size(); for(size_t i=0;i<base;++i){ if(i>=base-ab.size()){const size_t d=i-(base-ab.size()); as[i]=ab[d]==1?0:a.stride()[d];} if(i>=base-bb.size()){const size_t d=i-(base-bb.size()); bs[i]=bb[d]==1?0:b.stride()[d];} rs[i]=result.stride()[i];} as[base]=a.stride()[a.ndim()-2];as[base+1]=a.stride().back(); bs[base+1]=b.stride()[b.ndim()-2];bs[base+2]=b.stride().back();rs[base]=result.stride()[base];rs[base+2]=result.stride()[base+1]; Tensor av(domain,as,a.storage(),a.storage_size(),a.offset()), bv(domain,bs,b.storage(),b.storage_size(),b.offset()), rv(domain,rs,result.storage(),result.storage_size(),result.offset()); cpu_kernels::naive_matmul(av,bv,rv); return result; }
 
 Tensor matmul(const Tensor& a, const Tensor& b) {
   Tensor result = naive_matmul(a, b);
@@ -398,12 +401,10 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
       const auto& [lhs, rhs] = parents;
       const Tensor& grad = out.grad();
       if (lhs.requires_grad()) {
-        Tensor rhs_t = rhs.transpose(0, 1);
-        lhs.add_grad(matmul(grad, rhs_t));
+        lhs.add_grad(detail::sum_to_shape(matmul(grad, rhs.transpose(-1, -2)), lhs.shape()));
       }
       if (rhs.requires_grad()) {
-        Tensor lhs_t = lhs.transpose(0, 1);
-        rhs.add_grad(matmul(lhs_t, grad));
+        rhs.add_grad(detail::sum_to_shape(matmul(lhs.transpose(-1, -2), grad), rhs.shape()));
       }
     };
     result.set_grad_fn(

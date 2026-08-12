@@ -71,6 +71,16 @@ class Linear : public Module {
   const Tensor& bias() const noexcept { return bias_; }
 };
 
+class ReLU : public Module {
+ public:
+  Tensor forward(const Tensor& x) override { return functional::relu(x); }
+};
+
+class GELU : public Module {
+ public:
+  Tensor forward(const Tensor& x) override { return functional::gelu(x); }
+};
+
 class ModuleHolder {
  public:
   std::shared_ptr<Module> ptr;
@@ -206,24 +216,10 @@ inline Linear::Linear(size_t in_dim, size_t out_dim)
 }
 
 inline Tensor Linear::forward(const Tensor& x) {
-  bool squeeze = false;
-
-  Tensor input = x;
-
-  if (input.ndim() == 1) {
-    input = input.view({1, input.shape()[0]});
-    squeeze = true;
+  if (x.ndim() == 0 || x.shape().back() != weight_.shape()[0]) {
+    throw std::invalid_argument("Linear::forward(): input feature dimension mismatch");
   }
-
-  Tensor out = functional::matmul(input, weight_);
-
-  out = functional::add(out, bias_);
-
-  if (squeeze) {
-    out = out.view({out.shape()[1]});
-  }
-
-  return out;
+  return functional::add(functional::matmul(x, weight_), bias_);
 }
 
 inline Sequential::Sequential(std::initializer_list<ModuleHolder> modules) {

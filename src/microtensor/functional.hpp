@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "microtensor/autograd.hpp"
 #include "microtensor/tensor.hpp"
 
@@ -28,10 +30,22 @@ Tensor sin(const Tensor& a);
 Tensor cos(const Tensor& a);
 Tensor relu(const Tensor& a);
 Tensor sqrt(const Tensor& a);
+Tensor gelu(const Tensor& a);
 
 Tensor sum(const Tensor& a);
+Tensor sum(const Tensor& a, const std::vector<index_t>& dims);
 Tensor mean(const Tensor& a);
+Tensor mean(const Tensor& a, const std::vector<index_t>& dims);
+Tensor rmsnorm(const Tensor& a, const std::vector<index_t>& dims,
+               float eps = 1e-5f);
 Tensor matmul(const Tensor& a, const Tensor& b);
+
+namespace detail {
+index_t normalize_idx(const Tensor& tensor, index_t idx, size_t rank_dim);
+std::vector<index_t> normalize_idx(const Tensor& tensor,
+                                   const std::vector<index_t>& idx);
+Tensor sum_to_shape(const Tensor& input, const std::vector<size_t>& target_shape);
+}  // namespace detail
 
 }  // namespace functional
 

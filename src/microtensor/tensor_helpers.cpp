@@ -38,6 +38,22 @@ size_t Tensor::get_flat_index(std::span<const size_t> indices) const {
   });
 }
 
+size_t Tensor::normalize_index(index_t index, size_t dim) const {
+  if (dim >= ndim()) throw std::out_of_range("Tensor dimension is out of bounds");
+  const index_t extent = static_cast<index_t>(shape_[dim]);
+  if (index < 0) index += extent;
+  if (index < 0 || index >= extent) throw std::out_of_range("Tensor index is out of bounds");
+  return static_cast<size_t>(index);
+}
+
+std::vector<size_t> Tensor::normalize_indices(std::span<const index_t> indices) const {
+  if (indices.size() != ndim()) throw std::out_of_range("Tensor index rank does not match tensor rank");
+  std::vector<size_t> result;
+  result.reserve(indices.size());
+  for (size_t dim = 0; dim < indices.size(); ++dim) result.push_back(normalize_index(indices[dim], dim));
+  return result;
+}
+
 const std::vector<size_t>& Tensor::shape() const noexcept { return shape_; }
 const std::vector<size_t>& Tensor::stride() const noexcept { return stride_; }
 size_t Tensor::offset() const noexcept { return offset_; }

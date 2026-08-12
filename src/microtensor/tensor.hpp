@@ -5,6 +5,7 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <random>
 #include <span>
@@ -13,6 +14,8 @@
 #include "microtensor/autograd.hpp"
 
 namespace tensors {
+
+using index_t = std::ptrdiff_t;
 
 std::vector<size_t> compute_strides(const std::vector<size_t>& shape);
 size_t compute_size(const std::vector<size_t>& shape);
@@ -28,6 +31,8 @@ class Tensor {
   mutable std::shared_ptr<AutogradMeta> autograd_meta_ = nullptr;
 
   size_t get_flat_index(std::span<const size_t> indices) const;
+  size_t normalize_index(index_t index, size_t dim) const;
+  std::vector<size_t> normalize_indices(std::span<const index_t> indices) const;
 
   Tensor as_strided(const std::vector<size_t>& shape,
                     const std::vector<size_t>& stride, size_t offset) const;
@@ -43,23 +48,23 @@ class Tensor {
   Tensor(std::vector<size_t> shape, std::initializer_list<float> list);
 
   template <typename... Indices>
-    requires(std::convertible_to<std::decay_t<Indices>, size_t> && ...)
+    requires(std::integral<std::decay_t<Indices>> && ...)
   float& operator[](Indices... indices) {
     static_assert(sizeof...(indices) > 0, "Number of indices cannot be zero!");
 
-    std::array<size_t, sizeof...(Indices)> idx_arr{
-        static_cast<size_t>(indices)...};
+    std::array<index_t, sizeof...(Indices)> raw{static_cast<index_t>(indices)...};
+    auto idx_arr = normalize_indices(raw);
 
     return data_[get_flat_index(idx_arr)];
   }
 
   template <typename... Indices>
-    requires(std::convertible_to<std::decay_t<Indices>, size_t> && ...)
+    requires(std::integral<std::decay_t<Indices>> && ...)
   const float& operator[](Indices... indices) const {
     static_assert(sizeof...(indices) > 0, "Number of indices cannot be zero!");
 
-    std::array<size_t, sizeof...(Indices)> idx_arr{
-        static_cast<size_t>(indices)...};
+    std::array<index_t, sizeof...(Indices)> raw{static_cast<index_t>(indices)...};
+    auto idx_arr = normalize_indices(raw);
 
     return data_[get_flat_index(idx_arr)];
   }
@@ -102,7 +107,12 @@ class Tensor {
   bool is_contiguous() const noexcept;
 
   Tensor view(const std::vector<size_t>& shape) const;
-  Tensor transpose(size_t dim0, size_t dim1) const;
+  Tensor transpose(index_t dim0, index_t dim1) const;
+  Tensor permute(const std::vector<index_t>& dims) const;
+  Tensor contiguous() const;
+  std::vector<Tensor> split(const std::vector<size_t>& split_sizes,
+                            index_t axis = 0) const;
+  std::vector<Tensor> chunk(size_t chunks, index_t axis = 0) const;
 
   bool requires_grad() const noexcept;
   void set_requires_grad(bool requires_grad) const;
