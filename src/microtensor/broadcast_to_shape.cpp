@@ -3,8 +3,8 @@
 
 namespace tensors {
 
-[[maybe_unused]] static Tensor legacy_sum_to_shape(const Tensor& input,
-                                  const std::vector<size_t>& target_shape) {
+[[maybe_unused]] static Tensor legacy_sum_to_shape(
+    const Tensor& input, const std::vector<size_t>& target_shape) {
   const auto& input_shape = input.shape();
 
   if (input_shape == target_shape) {

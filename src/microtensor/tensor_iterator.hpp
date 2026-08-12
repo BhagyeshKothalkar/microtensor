@@ -3,8 +3,8 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
-#include <tuple>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -64,7 +64,8 @@ TensorIterator<Dest, Src...>::TensorIterator(Tensor& dest,
     }
   };
   if (dest.stride().size() != dest.ndim()) {
-    throw std::invalid_argument("TensorIterator destination has invalid strides");
+    throw std::invalid_argument(
+        "TensorIterator destination has invalid strides");
   }
   (validate(srcs), ...);
   offsets_.fill(0);
@@ -88,7 +89,8 @@ TensorIterator<Dest, Src...>::TensorIterator(const Tensor& dest,
     }
   };
   if (dest.stride().size() != dest.ndim()) {
-    throw std::invalid_argument("TensorIterator destination has invalid strides");
+    throw std::invalid_argument(
+        "TensorIterator destination has invalid strides");
   }
   (validate(srcs), ...);
   offsets_.fill(0);

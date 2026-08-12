@@ -162,6 +162,7 @@ TEST_F(TensorTests, TestFunctionalNaiveMatmul) {
     }
   }
 }
+
 /* Activation Functional Wrappers */
 
 TEST_F(TensorTests, TestFunctionalActivations) {

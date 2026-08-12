@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tensor.hpp"
+
 namespace tensors {
 namespace cpu_kernels {
 

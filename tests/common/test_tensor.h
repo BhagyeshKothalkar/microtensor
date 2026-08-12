@@ -10,6 +10,7 @@
 class TensorTests : public ::testing::Test {
  protected:
   void SetUp() override { gen.seed(rd()); }
+
   void TearDown() override {}
 
   std::random_device rd;

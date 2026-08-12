@@ -90,16 +90,17 @@ Tensor& softmax(Tensor& x) {
       [&max_value](const float& val) { max_value = std::max(max_value, val); });
 
   float sum = 0.0f;
-  TensorIterator<const float>(x).for_each(
-      [&sum, max_value](const float& val) { sum += std::exp(val - max_value); });
+  TensorIterator<const float>(x).for_each([&sum, max_value](const float& val) {
+    sum += std::exp(val - max_value);
+  });
 
   TensorIterator<float>(x).for_each(
       [sum, max_value](float& val) { val = std::exp(val - max_value) / sum; });
   return x;
 }
 
-Tensor &sqrt(Tensor &x){
-  TensorIterator<float>(x).for_each([](float&x_val){x_val = sqrtf(x_val);});
+Tensor& sqrt(Tensor& x) {
+  TensorIterator<float>(x).for_each([](float& x_val) { x_val = sqrtf(x_val); });
   return x;
 }
 

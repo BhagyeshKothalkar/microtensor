@@ -82,8 +82,12 @@ TEST_F(TensorTests, TestLinearLayer) {
   Tensor* w = nullptr;
   Tensor* b = nullptr;
   for (const auto& [name, param] : params) {
-    if (name == "weight") w = param;
-    if (name == "bias") b = param;
+    if (name == "weight") {
+      w = param;
+    }
+    if (name == "bias") {
+      b = param;
+    }
   }
 
   ASSERT_NE(w, nullptr);

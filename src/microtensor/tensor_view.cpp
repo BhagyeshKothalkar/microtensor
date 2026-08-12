@@ -58,7 +58,15 @@ Tensor Tensor::as_strided(const std::vector<size_t>& shape,
 }
 
 Tensor Tensor::transpose(index_t dim0, index_t dim1) const {
-  auto normalize_dim = [this](index_t dim) { if (dim < 0) dim += static_cast<index_t>(ndim()); if (dim < 0 || dim >= static_cast<index_t>(ndim())) throw std::out_of_range("transpose(): dimension is out of range"); return static_cast<size_t>(dim); };
+  auto normalize_dim = [this](index_t dim) {
+    if (dim < 0) {
+      dim += static_cast<index_t>(ndim());
+    }
+    if (dim < 0 || dim >= static_cast<index_t>(ndim())) {
+      throw std::out_of_range("transpose(): dimension is out of range");
+    }
+    return static_cast<size_t>(dim);
+  };
   const size_t first = normalize_dim(dim0);
   const size_t second = normalize_dim(dim1);
   std::vector<size_t> new_shape = this->shape();
@@ -75,7 +83,8 @@ Tensor Tensor::transpose(index_t dim0, index_t dim1) const {
       const auto& [lhs] = parents;
       const Tensor& grad = out.grad();
       if (lhs.requires_grad()) {
-        lhs.add_grad(grad.transpose(static_cast<index_t>(first), static_cast<index_t>(second)));
+        lhs.add_grad(grad.transpose(static_cast<index_t>(first),
+                                    static_cast<index_t>(second)));
       }
     };
     result.set_grad_fn(
@@ -85,16 +94,46 @@ Tensor Tensor::transpose(index_t dim0, index_t dim1) const {
 }
 
 Tensor Tensor::permute(const std::vector<index_t>& dims) const {
-  if (dims.size() != ndim()) throw std::invalid_argument("permute(): rank mismatch");
-  std::vector<size_t> order; order.reserve(ndim());
+  if (dims.size() != ndim()) {
+    throw std::invalid_argument("permute(): rank mismatch");
+  }
+  std::vector<size_t> order;
+  order.reserve(ndim());
   std::vector<bool> seen(ndim(), false);
-  for (auto dim : dims) { if (dim < 0) dim += static_cast<index_t>(ndim()); if (dim < 0 || dim >= static_cast<index_t>(ndim())) throw std::out_of_range("permute(): dimension is out of range"); const size_t normalized = static_cast<size_t>(dim); if (seen[normalized]) throw std::invalid_argument("permute(): repeated dimension"); seen[normalized] = true; order.push_back(normalized); }
+  for (auto dim : dims) {
+    if (dim < 0) {
+      dim += static_cast<index_t>(ndim());
+    }
+    if (dim < 0 || dim >= static_cast<index_t>(ndim())) {
+      throw std::out_of_range("permute(): dimension is out of range");
+    }
+    const size_t normalized = static_cast<size_t>(dim);
+    if (seen[normalized]) {
+      throw std::invalid_argument("permute(): repeated dimension");
+    }
+    seen[normalized] = true;
+    order.push_back(normalized);
+  }
   std::vector<size_t> shape(ndim()), stride(ndim());
-  for (size_t i = 0; i < ndim(); ++i) { shape[i] = shape_[order[i]]; stride[i] = stride_[order[i]]; }
+  for (size_t i = 0; i < ndim(); ++i) {
+    shape[i] = shape_[order[i]];
+    stride[i] = stride_[order[i]];
+  }
   Tensor result = as_strided(shape, stride, offset_);
   if (AutogradContext::is_enabled() && requires_grad()) {
-    result.set_requires_grad(true); auto parents = make_parents(*this);
-    auto backward = [out = result, order](const auto& parents) { NoGradGuard guard; const auto& [input] = parents; if (input.requires_grad()) { std::vector<index_t> inverse(order.size()); for (size_t i = 0; i < order.size(); ++i) inverse[order[i]] = static_cast<index_t>(i); input.add_grad(out.grad().permute(inverse)); } };
+    result.set_requires_grad(true);
+    auto parents = make_parents(*this);
+    auto backward = [out = result, order](const auto& parents) {
+      NoGradGuard guard;
+      const auto& [input] = parents;
+      if (input.requires_grad()) {
+        std::vector<index_t> inverse(order.size());
+        for (size_t i = 0; i < order.size(); ++i) {
+          inverse[order[i]] = static_cast<index_t>(i);
+        }
+        input.add_grad(out.grad().permute(inverse));
+      }
+    };
     result.set_grad_fn(make_grad_node(std::move(parents), std::move(backward)));
   }
   return result;
@@ -102,17 +141,53 @@ Tensor Tensor::permute(const std::vector<index_t>& dims) const {
 
 Tensor Tensor::contiguous() const { return is_contiguous() ? *this : clone(); }
 
-std::vector<Tensor> Tensor::split(const std::vector<size_t>& sizes, index_t axis) const {
-  if (axis < 0) axis += static_cast<index_t>(ndim()); if (axis < 0 || axis >= static_cast<index_t>(ndim())) throw std::out_of_range("split(): dimension is out of range"); const size_t dim = static_cast<size_t>(axis); size_t total = 0; for (auto size : sizes) total += size;
-  if (total != shape_[dim]) throw std::invalid_argument("split(): sizes do not match dimension");
-  std::vector<Tensor> result; result.reserve(sizes.size()); size_t start = 0;
-  for (auto size : sizes) { auto shape = shape_; shape[dim] = size; result.push_back(as_strided(shape, stride_, offset_ + start * stride_[dim])); start += size; }
+std::vector<Tensor> Tensor::split(const std::vector<size_t>& sizes,
+                                  index_t axis) const {
+  if (axis < 0) {
+    axis += static_cast<index_t>(ndim());
+  }
+  if (axis < 0 || axis >= static_cast<index_t>(ndim())) {
+    throw std::out_of_range("split(): dimension is out of range");
+  }
+  const size_t dim = static_cast<size_t>(axis);
+  size_t total = 0;
+  for (auto size : sizes) {
+    total += size;
+  }
+  if (total != shape_[dim]) {
+    throw std::invalid_argument("split(): sizes do not match dimension");
+  }
+  std::vector<Tensor> result;
+  result.reserve(sizes.size());
+  size_t start = 0;
+  for (auto size : sizes) {
+    auto shape = shape_;
+    shape[dim] = size;
+    result.push_back(
+        as_strided(shape, stride_, offset_ + start * stride_[dim]));
+    start += size;
+  }
   return result;
 }
 
 std::vector<Tensor> Tensor::chunk(size_t chunks, index_t axis) const {
-  if (chunks == 0) throw std::invalid_argument("chunk(): chunks must be positive"); if (axis < 0) axis += static_cast<index_t>(ndim()); if (axis < 0 || axis >= static_cast<index_t>(ndim())) throw std::out_of_range("chunk(): dimension is out of range"); const size_t dim = static_cast<size_t>(axis); const size_t base = shape_[dim] / chunks, remainder = shape_[dim] % chunks;
-  std::vector<size_t> sizes; sizes.reserve(chunks); for (size_t i = 0; i < chunks; ++i) sizes.push_back(base + (i < remainder)); return split(sizes, static_cast<index_t>(dim));
+  if (chunks == 0) {
+    throw std::invalid_argument("chunk(): chunks must be positive");
+  }
+  if (axis < 0) {
+    axis += static_cast<index_t>(ndim());
+  }
+  if (axis < 0 || axis >= static_cast<index_t>(ndim())) {
+    throw std::out_of_range("chunk(): dimension is out of range");
+  }
+  const size_t dim = static_cast<size_t>(axis);
+  const size_t base = shape_[dim] / chunks, remainder = shape_[dim] % chunks;
+  std::vector<size_t> sizes;
+  sizes.reserve(chunks);
+  for (size_t i = 0; i < chunks; ++i) {
+    sizes.push_back(base + (i < remainder));
+  }
+  return split(sizes, static_cast<index_t>(dim));
 }
 
 namespace {

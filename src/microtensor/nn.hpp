@@ -65,9 +65,11 @@ class Linear : public Module {
   Tensor forward(const Tensor& x) override;
 
   Tensor& weight() noexcept { return weight_; }
+
   const Tensor& weight() const noexcept { return weight_; }
 
   Tensor& bias() noexcept { return bias_; }
+
   const Tensor& bias() const noexcept { return bias_; }
 };
 
@@ -101,9 +103,11 @@ class ModuleHolder {
   ModuleHolder& operator=(ModuleHolder&&) noexcept = default;
 
   Module& operator*() noexcept { return *ptr; }
+
   const Module& operator*() const noexcept { return *ptr; }
 
   Module* operator->() noexcept { return ptr.get(); }
+
   const Module* operator->() const noexcept { return ptr.get(); }
 
   explicit operator bool() const noexcept { return static_cast<bool>(ptr); }
@@ -208,7 +212,8 @@ inline const std::vector<std::pair<std::string, Tensor*>>& Module::parameters()
 }
 
 inline Linear::Linear(size_t in_dim, size_t out_dim)
-    : weight_(Tensor::zeros({in_dim, out_dim})), bias_(Tensor::zeros({out_dim})) {
+    : weight_(Tensor::zeros({in_dim, out_dim})),
+      bias_(Tensor::zeros({out_dim})) {
   register_parameters({
       {"weight", &weight_},
       {"bias", &bias_},
@@ -217,7 +222,8 @@ inline Linear::Linear(size_t in_dim, size_t out_dim)
 
 inline Tensor Linear::forward(const Tensor& x) {
   if (x.ndim() == 0 || x.shape().back() != weight_.shape()[0]) {
-    throw std::invalid_argument("Linear::forward(): input feature dimension mismatch");
+    throw std::invalid_argument(
+        "Linear::forward(): input feature dimension mismatch");
   }
   return functional::add(functional::matmul(x, weight_), bias_);
 }

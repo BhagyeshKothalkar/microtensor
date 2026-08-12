@@ -5,7 +5,6 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <random>
 #include <span>
@@ -52,7 +51,8 @@ class Tensor {
   float& operator[](Indices... indices) {
     static_assert(sizeof...(indices) > 0, "Number of indices cannot be zero!");
 
-    std::array<index_t, sizeof...(Indices)> raw{static_cast<index_t>(indices)...};
+    std::array<index_t, sizeof...(Indices)> raw{
+        static_cast<index_t>(indices)...};
     auto idx_arr = normalize_indices(raw);
 
     return data_[get_flat_index(idx_arr)];
@@ -63,7 +63,8 @@ class Tensor {
   const float& operator[](Indices... indices) const {
     static_assert(sizeof...(indices) > 0, "Number of indices cannot be zero!");
 
-    std::array<index_t, sizeof...(Indices)> raw{static_cast<index_t>(indices)...};
+    std::array<index_t, sizeof...(Indices)> raw{
+        static_cast<index_t>(indices)...};
     auto idx_arr = normalize_indices(raw);
 
     return data_[get_flat_index(idx_arr)];

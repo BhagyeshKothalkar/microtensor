@@ -7,7 +7,6 @@
 #include "microtensor/cpu_kernels.hpp"
 #include "microtensor/functional.hpp"
 #include "microtensor/tensor.hpp"
-#include "microtensor/tensor_iterator.hpp"
 
 namespace tensors {
 namespace optim {
@@ -77,8 +76,8 @@ class Adam : public Optimizer {
   float beta2_pow_ = 1.0f;
 
  public:
-  Adam(const std::vector<Tensor*>& tensors, float lr = 1e-3, float beta1 = 0.9, float beta2 = 0.99,
-       float eps = 1e-8f)
+  Adam(const std::vector<Tensor*>& tensors, float lr = 1e-3, float beta1 = 0.9,
+       float beta2 = 0.99, float eps = 1e-8f)
       : Optimizer(tensors),
         lr_(lr),
         beta1_(beta1),

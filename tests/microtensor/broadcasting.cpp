@@ -68,7 +68,9 @@ TEST_F(TensorTests, TestGetBroadcastShape) {
   std::vector<size_t> rand_s = random_shape();
   std::vector<size_t> padded_s = rand_s;
   for (size_t& dim : padded_s) {
-    if (gen() % 2 == 0) dim = 1;  // Randomly set dimensions to 1
+    if (gen() % 2 == 0) {
+      dim = 1;  // Randomly set dimensions to 1
+    }
   }
 
   Tensor rand_t1(rand_s);
@@ -107,13 +109,19 @@ TEST_F(TensorTests, TestBroadcastToShape) {
   std::vector<size_t> rand_target = {shape_distrib(gen), base_shape[1]};
   Tensor rand_view = broadcast_to_shape(rand_in, rand_target);
   std::cout << "input shape: ";
-  for (auto x : rand_in.shape()) std::cout << x << " ";
+  for (auto x : rand_in.shape()) {
+    std::cout << x << " ";
+  }
 
   std::cout << "\ninput stride: ";
-  for (auto x : rand_in.stride()) std::cout << x << " ";
+  for (auto x : rand_in.stride()) {
+    std::cout << x << " ";
+  }
 
   std::cout << "\ntarget shape: ";
-  for (auto x : rand_target) std::cout << x << " ";
+  for (auto x : rand_target) {
+    std::cout << x << " ";
+  }
 
   std::cout << '\n';
 
@@ -153,7 +161,9 @@ TEST_F(TensorTests, TestBroadcastTensors) {
   // std::vector<size_t> rand_shape2 = {rand_shape1[0], 1};
 
   std::vector<size_t> rand_shape1 = random_shape(2);
-  if (rand_shape1[1] == 1) rand_shape1[1] = 2;  // or any value > 1
+  if (rand_shape1[1] == 1) {
+    rand_shape1[1] = 2;  // or any value > 1
+  }
 
   std::vector<size_t> rand_shape2 = {rand_shape1[0], 1};
 

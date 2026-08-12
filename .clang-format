@@ -1,1 +1,4 @@
 BasedOnStyle: Google
+SeparateDefinitionBlocks: Always
+MaxEmptyLinesToKeep: 1
+InsertBraces: true

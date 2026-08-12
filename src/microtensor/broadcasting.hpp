@@ -24,7 +24,9 @@ bool are_broadcastable(const Types&... tensors) {
     bool valid = true;
 
     auto check_dim = [&target_dim, &valid, dim](const auto& tensor) {
-      if (!valid) return;
+      if (!valid) {
+        return;
+      }
       size_t curr_dim = 1;
       int idx =
           static_cast<int>(tensor.shape().size()) - 1 - static_cast<int>(dim);
@@ -61,7 +63,9 @@ std::vector<size_t> get_broadcast_shape(const Types&... tensors) {
     bool valid = true;
 
     auto check_dim = [&return_shape, &valid, dim](const auto& tensor) {
-      if (!valid) return;
+      if (!valid) {
+        return;
+      }
       size_t curr_dim = 1;
       int idx =
           static_cast<int>(tensor.shape().size()) - 1 - static_cast<int>(dim);
