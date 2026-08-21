@@ -1,130 +1,141 @@
 #pragma once
 
-#include <algorithm>
-#include <array>
-#include <cassert>
-#include <concepts>
 #include <cstddef>
 #include <memory>
-#include <random>
 #include <span>
 #include <vector>
 
-#include "microtensor/autograd.hpp"
+namespace microtensor {
 
-namespace tensors {
+class Tensor;
 
-using index_t = std::ptrdiff_t;
+namespace autograd {
+class AutogradMeta;
 
-std::vector<size_t> compute_strides(const std::vector<size_t>& shape);
-size_t compute_size(const std::vector<size_t>& shape);
+class GradNode;
+void backward(Tensor&);
+void accumulate(Tensor&, const Tensor&);
+}  // namespace autograd
 
 class Tensor {
- private:
-  std::vector<size_t> shape_;
-  std::vector<size_t> stride_;
-  size_t offset_ = 0;
-  std::shared_ptr<float[]> storage_;
-  size_t max_size_;
-  float* data_ = nullptr;
-  mutable std::shared_ptr<AutogradMeta> autograd_meta_ = nullptr;
-
-  size_t get_flat_index(std::span<const size_t> indices) const;
-  size_t normalize_index(index_t index, size_t dim) const;
-  std::vector<size_t> normalize_indices(std::span<const index_t> indices) const;
-
-  Tensor as_strided(const std::vector<size_t>& shape,
-                    const std::vector<size_t>& stride, size_t offset) const;
-
  public:
   Tensor();
 
-  explicit Tensor(std::vector<size_t> shape);
+  explicit Tensor(std::span<const size_t> shape);
 
-  Tensor(std::vector<size_t> shape, std::vector<size_t> stride,
-         std::shared_ptr<float[]> storage, size_t max_size_, size_t offset = 0);
+  Tensor(std::shared_ptr<float[]> storage, std::vector<size_t> shape,
+         std::vector<size_t> stride, size_t offset, size_t storage_size);
 
-  Tensor(std::vector<size_t> shape, std::initializer_list<float> list);
+  // ---- creation ----
+
+  static Tensor zeros(std::span<const size_t> shape);
+
+  static Tensor ones(std::span<const size_t> shape);
+
+  static Tensor full(std::span<const size_t> shape, float value);
+
+  static Tensor linspace(float start, float end, size_t steps);
+
+  static Tensor rand(std::span<const size_t> shape);
+
+  static Tensor zeros_like(const Tensor& other);
+
+  static Tensor ones_like(const Tensor& other);
+
+  // ---- metadata ----
+
+  std::span<const size_t> shape() const noexcept;
+
+  std::span<const size_t> stride() const noexcept;
+
+  size_t ndim() const noexcept;
+
+  size_t numel() const noexcept;
+
+  size_t storage_size() const noexcept;
+
+  size_t offset() const noexcept;
+
+  bool empty() const noexcept;
+
+  bool is_contiguous() const noexcept;
+
+  // ---- storage ----
+
+  float* data() noexcept;
+
+  const float* data() const noexcept;
+
+  std::shared_ptr<float[]> storage() const noexcept;
+
+  // ---- indexing ----
 
   template <typename... Indices>
-    requires(std::integral<std::decay_t<Indices>> && ...)
-  float& operator[](Indices... indices) {
-    static_assert(sizeof...(indices) > 0, "Number of indices cannot be zero!");
-
-    std::array<index_t, sizeof...(Indices)> raw{
-        static_cast<index_t>(indices)...};
-    auto idx_arr = normalize_indices(raw);
-
-    return data_[get_flat_index(idx_arr)];
-  }
+  float& operator[](Indices... indices);
 
   template <typename... Indices>
-    requires(std::integral<std::decay_t<Indices>> && ...)
-  const float& operator[](Indices... indices) const {
-    static_assert(sizeof...(indices) > 0, "Number of indices cannot be zero!");
+  const float& operator[](Indices... indices) const;
 
-    std::array<index_t, sizeof...(Indices)> raw{
-        static_cast<index_t>(indices)...};
-    auto idx_arr = normalize_indices(raw);
+  // ---- views ----
 
-    return data_[get_flat_index(idx_arr)];
-  }
+  Tensor as_strided(std::span<const size_t> shape,
+                    std::span<const size_t> stride, size_t offset = 0) const;
 
-  static Tensor zeros(const std::vector<size_t>& shape);
-  static Tensor ones(const std::vector<size_t>& shape);
-  static Tensor full(const std::vector<size_t>& shape, float value);
-  static Tensor linspace(float start, float end, size_t num);
+  Tensor view(std::span<const size_t> shape) const;
 
-  template <std::uniform_random_bit_generator Gen>
-  static Tensor rand(const std::vector<size_t>& shape, Gen& rng) {
-    Tensor ret(shape);
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-    std::generate_n(ret.storage().get(), ret.numel(),
-                    [&]() { return dist(rng); });
-    return ret;
-  }
+  Tensor transpose(size_t dim0, size_t dim1) const;
+
+  Tensor permute(std::span<const size_t> dims) const;
+
+  Tensor contiguous() const;
 
   Tensor clone() const;
 
-  static inline Tensor zeros_like(const Tensor& t) {
-    return Tensor::zeros(t.shape());
-  }
+  std::vector<Tensor> split(size_t sections, size_t dim) const;
 
-  static inline Tensor ones_like(const Tensor& t) {
-    return Tensor::ones(t.shape());
-  }
+  std::vector<Tensor> chunk(size_t chunks, size_t dim) const;
 
-  const std::vector<size_t>& shape() const noexcept;
-  const std::vector<size_t>& stride() const noexcept;
-  size_t offset() const noexcept;
-  size_t ndim() const noexcept;
-  size_t numel() const noexcept;
-  bool empty() const noexcept;
-  size_t storage_size() const noexcept;
-  bool has_grad() const noexcept;
-  const float* data() const noexcept;
-  float* data() noexcept;
-  std::shared_ptr<float[]> storage() const noexcept;
-  bool is_contiguous() const noexcept;
+  // ---- autograd bridge ----
 
-  Tensor view(const std::vector<size_t>& shape) const;
-  Tensor transpose(index_t dim0, index_t dim1) const;
-  Tensor permute(const std::vector<index_t>& dims) const;
-  Tensor contiguous() const;
-  std::vector<Tensor> split(const std::vector<size_t>& split_sizes,
-                            index_t axis = 0) const;
-  std::vector<Tensor> chunk(size_t chunks, index_t axis = 0) const;
+  bool requires_grad() const;
 
-  bool requires_grad() const noexcept;
-  void set_requires_grad(bool requires_grad) const;
-  bool is_leaf() const noexcept;
-  void set_is_leaf(bool is_leaf) const;
-  std::shared_ptr<IGradNode> grad_fn() const noexcept;
-  void set_grad_fn(std::shared_ptr<IGradNode> node) const;
-  const Tensor& grad() const;
-  Tensor& mutable_grad() const;
-  void zero_grad() const;
-  void add_grad(const Tensor& g) const;
-  void backward() const;
+  void requires_grad(bool enabled);
+
+  const Tensor* grad() const;
+
+  void backward();
+  friend class autograd::AutogradMeta;
+  friend class GradNode;
+  friend void autograd::backward(Tensor&);
+  friend void autograd::accumulate(Tensor&, const Tensor&);
+
+  std::shared_ptr<autograd::AutogradMeta>& autograd_meta();
+
+  const std::shared_ptr<autograd::AutogradMeta>& autograd_meta() const;
+
+ private:
+  std::shared_ptr<float[]> storage_;
+
+  std::vector<size_t> shape_;
+
+  std::vector<size_t> stride_;
+
+  size_t offset_;
+
+  size_t storage_size_;
+
+  std::shared_ptr<autograd::AutogradMeta> autograd_;
+
+ private:
+  static size_t checked_numel(std::span<const size_t> shape);
+
+  static std::vector<size_t> contiguous_strides(std::span<const size_t> shape);
+
+  size_t flat_index(std::span<const size_t> indices) const;
+
+  void validate_view_bounds(std::span<const size_t> shape,
+                            std::span<const size_t> stride,
+                            size_t offset) const;
 };
-}  // namespace tensors
+
+}  // namespace microtensor

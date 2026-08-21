@@ -25,7 +25,7 @@ Tensor& softmax(Tensor& x);
 Tensor& sqrt(Tensor& x);
 
 Tensor& naive_matmul(const Tensor& a, const Tensor& b, Tensor& res);
-Tensor sum(const Tensor& in);
+Tensor sum(const Tensor& src, const std::vector<index_t>& dims);
 Tensor clone(const Tensor& a);
 
 };  // namespace cpu_kernels

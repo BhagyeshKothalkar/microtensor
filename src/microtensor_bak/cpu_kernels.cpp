@@ -121,11 +121,16 @@ Tensor& relu_backward(const Tensor& grad_out, const Tensor& input,
   return grad_in;
 }
 
-Tensor sum(const Tensor& in) {
-  float acc = 0.0f;
-  TensorIterator<const float>(in).for_each(
-      [&acc](const float& a_val) { acc += a_val; });
-  return Tensor({}, {acc});
+void sum(
+    Tensor& dst,
+    const Tensor& src,
+    const std::vector<index_t>& dims) {
+  ReductionIterator<float, const float>(dst, src, dims)
+      .for_each([](float& dst_value, auto& group) {
+        group.for_each_group([&dst_value](const float& src_value) {
+          dst_value += src_value;
+        });
+      });
 }
 
 Tensor clone(const Tensor& a) {

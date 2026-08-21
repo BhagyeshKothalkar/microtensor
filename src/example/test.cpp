@@ -4,7 +4,7 @@
 
 #include "microtensor/functional.hpp"
 #include "microtensor/nn.hpp"
-#include "microtensor/optimizer.hpp"
+#include "microtensor/optim.hpp"
 
 using namespace tensors;
 using namespace tensors::nn;

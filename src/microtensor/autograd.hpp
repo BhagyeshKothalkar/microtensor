@@ -1,110 +1,125 @@
 #pragma once
 
-#include <functional>
 #include <memory>
+#include <span>
 #include <tuple>
-#include <type_traits>
-#include <utility>
+#include <vector>
 
-namespace tensors {
+#include "tensor.hpp"
 
-class Tensor;
+namespace microtensor {
+
+namespace autograd {
+
+class AutogradMeta {
+ public:
+  bool requires_grad = false;
+
+  Tensor gradient;
+
+  std::shared_ptr<class GradNode> grad_fn;
+
+  bool is_leaf = true;
+};
 
 class AutogradContext {
- private:
-  inline static thread_local bool enabled_ = true;
-
  public:
-  static bool is_enabled() noexcept { return enabled_; }
+  static bool enabled();
 
-  static void set_enabled(bool enabled) noexcept { enabled_ = enabled; }
+  static void set_enabled(bool value);
+
+ private:
+  static bool enabled_;
 };
 
 class NoGradGuard {
- private:
-  bool prev_state_;
-
  public:
-  NoGradGuard() noexcept : prev_state_(AutogradContext::is_enabled()) {
-    AutogradContext::set_enabled(false);
-  }
+  NoGradGuard();
 
-  ~NoGradGuard() { AutogradContext::set_enabled(prev_state_); }
+  ~NoGradGuard();
 
   NoGradGuard(const NoGradGuard&) = delete;
+
   NoGradGuard& operator=(const NoGradGuard&) = delete;
-  NoGradGuard(NoGradGuard&&) = delete;
-  NoGradGuard& operator=(NoGradGuard&&) = delete;
+
+ private:
+  bool previous_;
 };
 
-class IGradNode {
+class GradNode {
  public:
-  virtual ~IGradNode() = default;
+  virtual ~GradNode() = default;
 
-  virtual void backward() = 0;
+  virtual std::vector<Tensor*> parents() = 0;
 
-  virtual void for_each_parent(
-      const std::function<void(const Tensor&)>& callback) const = 0;
+  virtual void backward(const Tensor& gradient) = 0;
 };
 
-namespace detail {
-
-template <typename T>
-void for_each_tensor_parent(
-    const T& item, const std::function<void(const Tensor&)>& callback) {
-  if constexpr (std::is_same_v<std::decay_t<T>, Tensor>) {
-    callback(item);
-  }
-}
-
-template <typename Tuple, std::size_t... Is>
-void for_each_parent_in_tuple(
-    const Tuple& parents, std::index_sequence<Is...>,
-    const std::function<void(const Tensor&)>& callback) {
-  (for_each_tensor_parent(std::get<Is>(parents), callback), ...);
-}
-
-}  // namespace detail
-
-template <typename Parents, typename BackwardFn>
-class GradNode : public IGradNode {
+template <class ParentTuple, class Backward>
+class GradNodeImpl final : public GradNode {
  public:
-  const Parents parents;
-  BackwardFn backward_fn;
+  GradNodeImpl(ParentTuple parents, Backward backward)
+      : parents_(std::move(parents)), backward_(std::move(backward)) {}
 
-  GradNode(Parents p, BackwardFn fn)
-      : parents(std::move(p)), backward_fn(std::move(fn)) {}
+  std::vector<Tensor*> parents() override {
+    std::vector<Tensor*> result;
 
-  void backward() override { backward_fn(parents); }
+    std::apply([&](auto&... p) { (result.push_back(&p), ...); }, parents_);
 
-  void for_each_parent(
-      const std::function<void(const Tensor&)>& callback) const override {
-    detail::for_each_parent_in_tuple(
-        parents, std::make_index_sequence<std::tuple_size_v<Parents>>{},
-        callback);
+    return result;
   }
+
+  void backward(const Tensor& gradient) override { backward_(gradient); }
+
+ private:
+  ParentTuple parents_;
+
+  Backward backward_;
 };
 
-template <typename... Args>
-auto make_parents(Args&&... args) {
-  return std::tuple<std::decay_t<Args>...>(std::forward<Args>(args)...);
+template <typename... T>
+auto make_parents(T&... tensors) {
+  return std::tuple<T&...>(tensors...);
 }
 
-template <typename Parents, typename BackwardFn>
-std::shared_ptr<IGradNode> make_grad_node(Parents&& parents,
-                                          BackwardFn&& backward_fn) {
-  using ParentsDecayed = std::decay_t<Parents>;
-  using BackwardFnDecayed = std::decay_t<BackwardFn>;
+template <class Backward, class... Parents>
+void record(Tensor& output, Backward&& backward, Parents&... parents);
 
-  return std::make_shared<GradNode<ParentsDecayed, BackwardFnDecayed>>(
-      std::forward<Parents>(parents), std::forward<BackwardFn>(backward_fn));
+void accumulate(Tensor& destination, const Tensor& gradient);
+
+void backward(Tensor& root);
+
+Tensor sum_to_shape(const Tensor& input, std::span<const size_t> shape);
+
+template <class Backward, class... Parents>
+void record(Tensor& output, Backward&& backward, Parents&... parents) {
+  if (!AutogradContext::enabled()) {
+    return;
+  }
+
+  bool needs_grad = false;
+
+  ((needs_grad |= parents.requires_grad()), ...);
+
+  if (!needs_grad) {
+    return;
+  }
+
+  if (!output.autograd_meta()) {
+    output.autograd_meta() = std::make_shared<AutogradMeta>();
+  }
+
+  output.autograd_meta()->requires_grad = true;
+  output.autograd_meta()->is_leaf = false;
+
+  using ParentTuple = decltype(make_parents(parents...));
+
+  using Node = GradNodeImpl<ParentTuple, std::decay_t<Backward> >;
+
+  output.autograd_meta()->grad_fn = std::make_shared<Node>(
+      make_parents(parents...), std::forward<Backward>(backward));
 }
 
-struct AutogradMeta {
-  std::unique_ptr<Tensor> grad_;
-  std::shared_ptr<IGradNode> grad_fn_;
-  bool requires_grad_ = false;
-  bool is_leaf_ = true;
-};
+}  // namespace autograd
 
-}  // namespace tensors
+}  // namespace microtensor
