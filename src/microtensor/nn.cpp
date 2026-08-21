@@ -54,7 +54,7 @@ bool Module::training() const { return training_; }
 
 Linear::Linear(size_t in_features, size_t out_features, bool bias)
     : in_features_(in_features), out_features_(out_features), has_bias_(bias) {
-  std::array<size_t, 2> weight_shape{out_features, in_features};
+  std::array<size_t, 2> weight_shape{in_features, out_features};
 
   Tensor weight = Tensor::zeros(weight_shape);
 

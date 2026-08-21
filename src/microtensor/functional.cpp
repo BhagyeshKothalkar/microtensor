@@ -2,10 +2,12 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <stdexcept>
 
 #include "autograd.hpp"
 #include "cpu.hpp"
+#include "microtensor/tensor.hpp"
 #include "shape.hpp"
 
 namespace microtensor {
@@ -198,9 +200,22 @@ Tensor sum(const Tensor& input, std::span<const size_t> dims) {
     throw std::runtime_error("dimension reduction pending");
   }
 
-  Tensor output;
+  Tensor output(std::array<size_t, 0>{});
 
   cpu::sum(output, input, dims);
+
+  autograd::record(
+      output,
+      [&input](const Tensor& grad_output) {
+        Tensor grad = Tensor::zeros(input.shape());
+
+        for (size_t i = 0; i < grad.numel(); ++i) {
+          grad.data()[i] = grad_output.data()[0];
+        }
+
+        autograd::accumulate(const_cast<Tensor&>(input), grad);
+      },
+      const_cast<Tensor&>(input));
 
   return output;
 }

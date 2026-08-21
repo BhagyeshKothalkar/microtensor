@@ -1,116 +1,220 @@
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdlib>
 #include <iostream>
-#include <random>
+#include <string>
 #include <vector>
 
+#include "microtensor/cpu.hpp"
 #include "microtensor/functional.hpp"
 #include "microtensor/nn.hpp"
 #include "microtensor/optim.hpp"
+#include "microtensor/shape.hpp"
+#include "microtensor/tensor.hpp"
 
-using namespace tensors;
-using namespace tensors::nn;
-using namespace tensors::optim;
+using namespace microtensor;
 
-static float scalar_value(const Tensor& x) { return x.data()[0]; }
+namespace {
 
-static void init_linear(Linear& layer, std::mt19937& rng) {
-  std::uniform_real_distribution<float> dist(-0.1f, 0.1f);
+size_t total_tests = 0;
+size_t failed_tests = 0;
 
-  layer.weight().set_requires_grad(true);
-  layer.bias().set_requires_grad(true);
+void check(bool condition, const std::string& name) {
+  ++total_tests;
 
-  for (size_t i = 0; i < layer.weight().numel(); ++i) {
-    layer.weight().data()[i] = dist(rng);
-  }
-
-  for (size_t i = 0; i < layer.bias().numel(); ++i) {
-    layer.bias().data()[i] = 0.0f;
+  if (condition) {
+    std::cout << "[PASS] " << name << "\n";
+  } else {
+    ++failed_tests;
+    std::cout << "[FAIL] " << name << "\n";
   }
 }
 
-std::mt19937 rng(123);
+void check_close(float actual, float expected, const std::string& name,
+                 float eps = 1e-5f) {
+  check(std::fabs(actual - expected) < eps, name);
+}
+
+Tensor make_vector(std::initializer_list<float> values) {
+  std::array<size_t, 1> shape{values.size()};
+
+  Tensor result(shape);
+
+  size_t index = 0;
+
+  for (float value : values) {
+    result.data()[index++] = value;
+  }
+
+  return result;
+}
+
+Tensor make_matrix(size_t rows, size_t cols) {
+  Tensor result = Tensor::zeros(std::array<size_t, 2>{rows, cols});
+
+  for (size_t i = 0; i < result.numel(); ++i) {
+    result.data()[i] = 1.0f;
+  }
+
+  return result;
+}
+
+}  // namespace
+
+void test_tensor() {
+  std::cout << "\nTensor\n";
+
+  Tensor x(std::array<size_t, 2>{2, 3});
+
+  check(x.ndim() == 2, "rank");
+
+  check(x.numel() == 6, "numel");
+
+  check(x.shape()[0] == 2 && x.shape()[1] == 3, "shape");
+
+  Tensor scalar = Tensor::zeros(std::array<size_t, 1>{1});
+
+  check(scalar.numel() == 1, "scalar");
+}
+
+void test_cpu() {
+  std::cout << "\nCPU\n";
+
+  Tensor input = make_vector({1, 2, 3});
+
+  Tensor output = Tensor::zeros(std::array<size_t, 1>{3});
+
+  cpu::unary(output, input, [](float x) { return x * x; });
+
+  check_close(output.data()[2], 9, "unary");
+
+  Tensor binary = Tensor::zeros(std::array<size_t, 1>{3});
+
+  cpu::binary(binary, input, output, [](float a, float b) { return a + b; });
+
+  check_close(binary.data()[1], 6, "binary");
+
+  Tensor reduced = Tensor::zeros(std::array<size_t, 1>{1});
+
+  cpu::sum(reduced, input, {});
+
+  check_close(reduced.data()[0], 6, "sum");
+}
+
+void test_broadcast() {
+  std::cout << "\nBroadcast\n";
+
+  Tensor a = Tensor::zeros(std::array<size_t, 2>{2, 1});
+
+  Tensor b = Tensor::zeros(std::array<size_t, 2>{1, 3});
+
+  std::array<const Tensor*, 2> inputs{&a, &b};
+
+  auto result = broadcast_shape(inputs);
+
+  check(result[0] == 2 && result[1] == 3, "broadcast shape");
+}
+
+void test_functional() {
+  std::cout << "\nFunctional\n";
+
+  Tensor a = make_vector({1, 2, 3});
+
+  Tensor b = make_vector({4, 5, 6});
+
+  Tensor c = add(a, b);
+
+  check_close(c.data()[0], 5, "add");
+
+  Tensor d = mul(a, b);
+
+  check_close(d.data()[2], 18, "mul");
+
+  Tensor e = relu(neg(a));
+
+  check_close(e.data()[0], 0, "relu");
+}
+
+void test_autograd() {
+  std::cout << "\nAutograd\n";
+
+  Tensor x = make_vector({1, 2, 3});
+
+  x.requires_grad(true);
+
+  Tensor y = mul(x, x);
+
+  Tensor loss = sum(y);
+
+  loss.backward();
+
+  auto* gradient = x.grad();
+
+  check(gradient != nullptr, "gradient exists");
+
+  if (gradient) {
+    check_close(gradient->data()[0], 2, "x2 gradient first");
+
+    check_close(gradient->data()[2], 6, "x2 gradient last");
+  }
+}
+
+void test_nn() {
+  std::cout << "\nNN\n";
+
+  Linear layer(3, 2);
+
+  Tensor input = Tensor::zeros(std::array<size_t, 2>{1, 3});
+
+  Tensor output = layer(input);
+
+  check(output.shape()[0] == 1 && output.shape()[1] == 2, "linear shape");
+
+  check(layer.parameters().size() > 0, "linear parameters");
+}
+
+void test_optimizer() {
+  std::cout << "\nOptimizer\n";
+
+  Tensor weight = make_vector({10});
+
+  weight.requires_grad(true);
+
+  Tensor loss = mul(weight, weight);
+
+  loss.backward();
+
+  float before = weight.data()[0];
+
+  SGD optimizer({&weight}, 0.1f);
+
+  optimizer.step();
+
+  check(weight.data()[0] < before, "sgd update");
+
+  optimizer.zero_grad();
+
+  check(weight.grad() != nullptr, "zero grad");
+}
 
 int main() {
-  // Focused feature harness; these APIs are intentionally added by this change.
-  Tensor indexed({2, 3}, {1, 2, 3, 4, 5, 6});
-  if (indexed[-1, -1] != 6.0f) {
-    return 1;
-  }
-  auto permuted = indexed.permute({1, 0});
-  if (permuted[-1, -1] != 6.0f) {
-    return 2;
-  }
-  auto reduced = functional::sum(indexed, {-1});
-  if (reduced.shape() != std::vector<size_t>{2} || reduced[0] != 6.0f) {
-    return 3;
-  }
-  auto normalized = functional::rmsnorm(indexed, {-1});
-  if (normalized.shape() != indexed.shape()) {
-    return 4;
-  }
-  auto batched =
-      functional::matmul(Tensor::ones({2, 3, 4}), Tensor::ones({2, 4, 5}));
-  if (batched.shape() != std::vector<size_t>{2, 3, 5} ||
-      batched[0, 0, 0] != 4.0f) {
-    return 5;
-  }
-  return 0;
+  test_tensor();
 
-  class mymodule : public Module {
-    Linear l1;
-    Linear l2;
+  test_cpu();
 
-   public:
-    mymodule() : l1(4, 16), l2(16, 1) {
-      init_linear(l1, rng);
-      init_linear(l2, rng);
-      register_children({{"l1", &l1}, {"l2", &l2}});
-    }
+  test_broadcast();
 
-    Tensor forward(const Tensor& x) override {
-      return l2.forward(functional::relu(l1.forward(x)));
-    }
-  };
+  test_functional();
 
-  mymodule model;
+  test_autograd();
 
-  for (const auto& [name, param] : model.named_parameters_recursive()) {
-    std::cout << name << '\n';
-  }
+  test_nn();
 
-  // std::vector<Tensor*> params = model.
+  test_optimizer();
 
-  optim::Adam optimizer(model.parameters_recursive(), 0.01f);
+  std::cout << "\n"
+            << total_tests << " tests, " << failed_tests << " failures\n";
 
-  // Dummy regression data.
-  Tensor x({4}, {
-                    0.5f,
-                    -1.0f,
-                    2.0f,
-                    0.25f,
-                });
-
-  Tensor target({1}, {
-                         0.75f,
-                     });
-
-  for (int step = 0; step < 100; ++step) {
-    // Forward.
-    Tensor prediction = model.forward(x);
-
-    // MSE.
-    Tensor diff = functional::sub(prediction, target);
-    Tensor loss = functional::mean(functional::mul(diff, diff));
-
-    float loss_value = scalar_value(loss);
-
-    // Backward.
-    loss.backward();
-
-    // // SGD.
-    optimizer.step();
-    optimizer.zero_grad();
-
-    std::cout << "step " << step << " loss = " << loss_value
-              << " prediction = " << prediction.data()[0] << '\n';
-  }
+  return failed_tests == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

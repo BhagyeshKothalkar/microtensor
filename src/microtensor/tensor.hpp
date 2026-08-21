@@ -4,7 +4,6 @@
 #include <memory>
 #include <span>
 #include <vector>
-
 namespace microtensor {
 
 class Tensor;
@@ -70,11 +69,15 @@ class Tensor {
 
   // ---- indexing ----
 
-  template <typename... Indices>
-  float& operator[](Indices... indices);
+  template <class Index>
+  float& operator[](Index index) {
+    return data()[index];
+  }
 
-  template <typename... Indices>
-  const float& operator[](Indices... indices) const;
+  template <class Index>
+  const float& operator[](Index index) const {
+    return data()[index];
+  }
 
   // ---- views ----
 

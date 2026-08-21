@@ -5,6 +5,8 @@
 #include <random>
 #include <stdexcept>
 
+#include "autograd.hpp"
+
 namespace microtensor {
 
 namespace {
@@ -303,5 +305,31 @@ std::shared_ptr<autograd::AutogradMeta>& Tensor::autograd_meta() {
 const std::shared_ptr<autograd::AutogradMeta>& Tensor::autograd_meta() const {
   return autograd_;
 }
+
+bool Tensor::requires_grad() const {
+  return autograd_ && autograd_->requires_grad;
+}
+
+void Tensor::requires_grad(bool enabled) {
+  if (!autograd_) {
+    autograd_ = std::make_shared<autograd::AutogradMeta>();
+  }
+
+  autograd_->requires_grad = enabled;
+}
+
+const Tensor* Tensor::grad() const {
+  if (!autograd_) {
+    return nullptr;
+  }
+
+  if (!autograd_->gradient.storage()) {
+    return nullptr;
+  }
+
+  return &autograd_->gradient;
+}
+
+void Tensor::backward() { autograd::backward(*this); }
 
 }  // namespace microtensor
