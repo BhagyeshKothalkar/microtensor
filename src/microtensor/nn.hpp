@@ -2,9 +2,9 @@
 
 #include <initializer_list>
 #include <memory>
+#include <ranges>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -61,6 +61,24 @@ class Module {
 using namedparam = std::pair<std::string_view, Tensor*>;
 using namedchild = std::pair<std::string_view, Module*>;
 
+class Sequential : public Module {
+ private:
+  std::vector<std::unique_ptr<Module>> modules_;
+
+ public:
+  template <typename... Modules>
+    requires(std::derived_from<Modules, Module> && ...)
+  Sequential(std::unique_ptr<Modules>&&... ptrs);
+
+  template <typename T, typename... Args>
+    requires(std::derived_from<T, Module>)
+  T& emplace(Args&&... args);
+
+  inline Tensor forward(const Tensor& x) override;
+
+  inline size_t size() const noexcept;
+};
+
 class Linear : public Module {
  private:
   Tensor weight_;
@@ -89,57 +107,6 @@ class GELU : public Module {
  public:
   Tensor forward(const Tensor& x) override { return functional::gelu(x); }
 };
-
-// class ModuleHolder {
-//  public:
-//   std::shared_ptr<Module> ptr;
-
-//   template <typename T, typename = std::enable_if_t<
-//                             std::is_base_of_v<Module, std::decay_t<T>> &&
-//                             !std::is_same_v<Module, std::decay_t<T>>>>
-//   explicit ModuleHolder(T&& module)
-//       : ptr(std::make_shared<std::decay_t<T>>(std::forward<T>(module))) {}
-
-//   explicit ModuleHolder(std::shared_ptr<Module> module)
-//       : ptr(std::move(module)) {}
-
-//   ModuleHolder(const ModuleHolder&) = default;
-//   ModuleHolder& operator=(const ModuleHolder&) = default;
-
-//   ModuleHolder(ModuleHolder&&) noexcept = default;
-//   ModuleHolder& operator=(ModuleHolder&&) noexcept = default;
-
-//   Module& operator*() noexcept { return *ptr; }
-
-//   const Module& operator*() const noexcept { return *ptr; }
-
-//   Module* operator->() noexcept { return ptr.get(); }
-
-//   const Module* operator->() const noexcept { return ptr.get(); }
-
-//   explicit operator bool() const noexcept { return static_cast<bool>(ptr); }
-// };
-
-// class Sequential : public Module {
-//  private:
-//   std::vector<std::pair<std::string, ModuleHolder>> modules_;
-
-//  public:
-//   Sequential(std::initializer_list<ModuleHolder> modules);
-
-//   Sequential(const Sequential&) = delete;
-//   Sequential& operator=(const Sequential&) = delete;
-
-//   Sequential(Sequential&&) = delete;
-//   Sequential& operator=(Sequential&&) = delete;
-
-//   Tensor forward(const Tensor& x) override;
-
-//   const std::vector<std::pair<std::string, ModuleHolder>>& modules()
-//       const noexcept {
-//     return modules_;
-//   }
-// };
 
 template <typename... Pairs>
   requires((std::is_same_v<Pairs, std::pair<std::string_view, Tensor*>> && ...))
@@ -231,33 +198,45 @@ inline Tensor Linear::forward(const Tensor& x) {
   return functional::add(functional::matmul(x, weight_), bias_);
 }
 
-// inline Sequential::Sequential(std::initializer_list<ModuleHolder> modules) {
-//   size_t index = 0;
+template <typename... Modules>
+  requires(std::derived_from<Modules, Module> && ...)
+Sequential::Sequential(std::unique_ptr<Modules>&&... ptrs) {
+  modules_.reserve(sizeof...(ptrs));
+  (modules_.push_back(std::move(ptrs)), ...);
+  for (auto&& [i, module] : std::ranges::views::enumerate(modules_)) {
+    register_children(namedchild({std::to_string(i), module.get()}));
+  }
+}
 
-//   for (const auto& holder : modules) {
-//     if (!holder.ptr) {
-//       continue;
-//     }
+template <typename T, typename... Args>
+  requires(std::derived_from<T, Module>)
+T& Sequential::emplace(Args&&... args) {
+  auto module = std::make_unique<T>(std::forward<Args>(args)...);
 
-//     std::string name = std::to_string(index++);
+  T* ptr = module.get();
 
-//     modules_.emplace_back(name, holder);
+  std::string name = std::to_string(modules_.size());
 
-//     register_children({
-//         {name, modules_.back().second.ptr.get()},
-//     });
-//   }
-// }
+  modules_.push_back(std::move(module));
 
-// inline Tensor Sequential::forward(const Tensor& x) {
-//   Tensor out = x;
+  register_children({
+      {name, ptr},
+  });
 
-//   for (auto& [_, holder] : modules_) {
-//     out = holder->forward(out);
-//   }
+  return *ptr;
+}
 
-//   return out;
-// }
+inline Tensor Sequential::forward(const Tensor& x) {
+  Tensor out = x;
+
+  for (const auto& module : modules_) {
+    out = module->forward(out);
+  }
+
+  return out;
+}
+
+inline size_t Sequential::size() const noexcept { return modules_.size(); }
 
 }  // namespace nn
 }  // namespace tensors

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <memory>
 #include <random>
 #include <vector>
 
@@ -11,6 +12,8 @@ using namespace tensors::nn;
 using namespace tensors::optim;
 
 static float scalar_value(const Tensor& x) { return x.data()[0]; }
+
+std::mt19937 rng(123);
 
 static void init_linear(Linear& layer, std::mt19937& rng) {
   std::uniform_real_distribution<float> dist(-0.1f, 0.1f);
@@ -26,8 +29,6 @@ static void init_linear(Linear& layer, std::mt19937& rng) {
     layer.bias().data()[i] = 0.0f;
   }
 }
-
-std::mt19937 rng(123);
 
 int main() {
   // Focused feature harness; these APIs are intentionally added by this change.
@@ -69,7 +70,7 @@ int main() {
     Linear l2;
 
    public:
-    mymodule() : l1(4, 16), l2(16, 1) {
+    mymodule() : l1(4, 16), l2(16, 4) {
       init_linear(l1, rng);
       init_linear(l2, rng);
       register_children(namedchild("l1", &l1), namedchild("l2", &l2));
@@ -80,7 +81,23 @@ int main() {
     }
   };
 
-  mymodule model;
+  class mymodule2 : public Module {
+    Linear l1;
+    Linear l2;
+
+   public:
+    mymodule2() : l1(4, 16), l2(16, 1) {
+      init_linear(l1, rng);
+      init_linear(l2, rng);
+      register_children(namedchild("l1", &l1), namedchild("l2", &l2));
+    }
+
+    Tensor forward(const Tensor& x) override {
+      return l2.forward(functional::relu(l1.forward(x)));
+    }
+  };
+
+  Sequential model(std::make_unique<mymodule>(), std::make_unique<mymodule2>());
 
   optim::Adam optimizer(model.parameters_recursive(), 0.01f);
 
