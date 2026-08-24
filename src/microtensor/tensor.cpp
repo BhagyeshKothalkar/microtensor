@@ -1,9 +1,9 @@
+#include "microtensor/tensor.hpp"
+
 #include <execution>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
-
-#include "microtensor/tensor.hpp"
 
 namespace tensors {
 

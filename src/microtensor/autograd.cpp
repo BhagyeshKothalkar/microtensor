@@ -1,9 +1,10 @@
+#include "microtensor/autograd.hpp"
+
 #include <functional>
 #include <memory>
 #include <unordered_set>
 #include <vector>
 
-#include "microtensor/autograd.hpp"
 #include "microtensor/broadcasting.hpp"
 #include "microtensor/cpu_kernels.hpp"
 #include "microtensor/tensor.hpp"
