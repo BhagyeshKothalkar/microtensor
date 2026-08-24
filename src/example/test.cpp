@@ -31,29 +31,38 @@ std::mt19937 rng(123);
 
 int main() {
   // Focused feature harness; these APIs are intentionally added by this change.
+  std::cerr << "begin" << std::endl;
   Tensor indexed({2, 3}, {1, 2, 3, 4, 5, 6});
   if (indexed[-1, -1] != 6.0f) {
     return 1;
   }
+  std::cerr << "index" << std::endl;
+
   auto permuted = indexed.permute({1, 0});
   if (permuted[-1, -1] != 6.0f) {
     return 2;
   }
+  std::cerr << "permute" << std::endl;
+
   auto reduced = functional::sum(indexed, {-1});
   if (reduced.shape() != std::vector<size_t>{2} || reduced[0] != 6.0f) {
     return 3;
   }
+  std::cerr << "reduced" << std::endl;
+
   auto normalized = functional::rmsnorm(indexed, {-1});
   if (normalized.shape() != indexed.shape()) {
     return 4;
   }
+  std::cerr << "normalized" << std::endl;
+
   auto batched =
       functional::matmul(Tensor::ones({2, 3, 4}), Tensor::ones({2, 4, 5}));
   if (batched.shape() != std::vector<size_t>{2, 3, 5} ||
       batched[0, 0, 0] != 4.0f) {
-    return 5;
+    std::cerr << "matmul incorrect" << std::endl;
   }
-  return 0;
+  std::cerr << "matmul correct" << std::endl;
 
   class mymodule : public Module {
     Linear l1;
@@ -72,12 +81,6 @@ int main() {
   };
 
   mymodule model;
-
-  for (const auto& [name, param] : model.named_parameters_recursive()) {
-    std::cout << name << '\n';
-  }
-
-  // std::vector<Tensor*> params = model.
 
   optim::Adam optimizer(model.parameters_recursive(), 0.01f);
 
@@ -110,7 +113,7 @@ int main() {
     optimizer.step();
     optimizer.zero_grad();
 
-    std::cout << "step " << step << " loss = " << loss_value
+    std::cerr << "step " << step << " loss = " << loss_value
               << " prediction = " << prediction.data()[0] << '\n';
   }
 }

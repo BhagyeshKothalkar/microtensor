@@ -58,38 +58,65 @@ Tensor Tensor::as_strided(const std::vector<size_t>& shape,
 }
 
 Tensor Tensor::transpose(index_t dim0, index_t dim1) const {
-  auto normalize_dim = [this](index_t dim) {
+  bool was_1d = (ndim() == 1);
+
+  Tensor input = *this;
+
+  if (was_1d) {
+    // [k] -> [1,k]
+    input = this->view({1, shape()[0]});
+
+    // dimensions now refer to promoted tensor
+  }
+
+  auto normalize_dim = [&input](index_t dim) {
     if (dim < 0) {
-      dim += static_cast<index_t>(ndim());
+      dim += static_cast<index_t>(input.ndim());
     }
-    if (dim < 0 || dim >= static_cast<index_t>(ndim())) {
+    if (dim < 0 || dim >= static_cast<index_t>(input.ndim())) {
       throw std::out_of_range("transpose(): dimension is out of range");
     }
     return static_cast<size_t>(dim);
   };
+
   const size_t first = normalize_dim(dim0);
   const size_t second = normalize_dim(dim1);
-  std::vector<size_t> new_shape = this->shape();
-  std::vector<size_t> new_stride = this->stride();
+
+  std::vector<size_t> new_shape = input.shape();
+  std::vector<size_t> new_stride = input.stride();
+
   std::swap(new_shape[first], new_shape[second]);
   std::swap(new_stride[first], new_stride[second]);
-  auto result = this->as_strided(new_shape, new_stride, this->offset());
 
-  if (AutogradContext::is_enabled() && this->requires_grad()) {
+  Tensor result = input.as_strided(new_shape, new_stride, input.offset());
+
+  if (AutogradContext::is_enabled() && requires_grad()) {
     result.set_requires_grad(true);
+
     auto parents = make_parents(*this);
-    auto backward_fn = [out = result, first, second](const auto& parents) {
+
+    auto backward_fn = [out = result, was_1d](const auto& parents) {
       NoGradGuard guard;
+
       const auto& [lhs] = parents;
       const Tensor& grad = out.grad();
+
       if (lhs.requires_grad()) {
-        lhs.add_grad(grad.transpose(static_cast<index_t>(first),
-                                    static_cast<index_t>(second)));
+        Tensor g = grad.transpose(0, 1);
+
+        if (was_1d) {
+          // [1,k] -> [k]
+          g = g.view({lhs.shape()[0]});
+        }
+
+        lhs.add_grad(g);
       }
     };
+
     result.set_grad_fn(
         make_grad_node(std::move(parents), std::move(backward_fn)));
   }
+
   return result;
 }
 
