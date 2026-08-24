@@ -72,7 +72,7 @@ int main() {
     mymodule() : l1(4, 16), l2(16, 1) {
       init_linear(l1, rng);
       init_linear(l2, rng);
-      register_children({{"l1", &l1}, {"l2", &l2}});
+      register_children(namedchild("l1", &l1), namedchild("l2", &l2));
     }
 
     Tensor forward(const Tensor& x) override {

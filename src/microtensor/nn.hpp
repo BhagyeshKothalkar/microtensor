@@ -24,11 +24,15 @@ class Module {
       std::vector<std::pair<std::string, Tensor*>>& result) const;
 
  protected:
-  void register_parameters(
-      std::initializer_list<std::pair<std::string_view, Tensor*>> pairs);
+  template <typename... Pairs>
+    requires((std::is_same_v<Pairs, std::pair<std::string_view, Tensor*>> &&
+              ...))
+  void register_parameters(Pairs&&... pairs);
 
-  void register_children(
-      std::initializer_list<std::pair<std::string_view, Module*>> pairs);
+  template <typename... Pairs>
+    requires((std::is_same_v<Pairs, std::pair<std::string_view, Module*>> &&
+              ...))
+  void register_children(Pairs&&... pairs);
 
  public:
   Module() = default;
@@ -53,6 +57,9 @@ class Module {
 
   virtual Tensor forward(const Tensor& x) = 0;
 };
+
+using namedparam = std::pair<std::string_view, Tensor*>;
+using namedchild = std::pair<std::string_view, Module*>;
 
 class Linear : public Module {
  private:
@@ -83,69 +90,67 @@ class GELU : public Module {
   Tensor forward(const Tensor& x) override { return functional::gelu(x); }
 };
 
-class ModuleHolder {
- public:
-  std::shared_ptr<Module> ptr;
+// class ModuleHolder {
+//  public:
+//   std::shared_ptr<Module> ptr;
 
-  template <typename T, typename = std::enable_if_t<
-                            std::is_base_of_v<Module, std::decay_t<T>> &&
-                            !std::is_same_v<Module, std::decay_t<T>>>>
-  explicit ModuleHolder(T&& module)
-      : ptr(std::make_shared<std::decay_t<T>>(std::forward<T>(module))) {}
+//   template <typename T, typename = std::enable_if_t<
+//                             std::is_base_of_v<Module, std::decay_t<T>> &&
+//                             !std::is_same_v<Module, std::decay_t<T>>>>
+//   explicit ModuleHolder(T&& module)
+//       : ptr(std::make_shared<std::decay_t<T>>(std::forward<T>(module))) {}
 
-  explicit ModuleHolder(std::shared_ptr<Module> module)
-      : ptr(std::move(module)) {}
+//   explicit ModuleHolder(std::shared_ptr<Module> module)
+//       : ptr(std::move(module)) {}
 
-  ModuleHolder(const ModuleHolder&) = default;
-  ModuleHolder& operator=(const ModuleHolder&) = default;
+//   ModuleHolder(const ModuleHolder&) = default;
+//   ModuleHolder& operator=(const ModuleHolder&) = default;
 
-  ModuleHolder(ModuleHolder&&) noexcept = default;
-  ModuleHolder& operator=(ModuleHolder&&) noexcept = default;
+//   ModuleHolder(ModuleHolder&&) noexcept = default;
+//   ModuleHolder& operator=(ModuleHolder&&) noexcept = default;
 
-  Module& operator*() noexcept { return *ptr; }
+//   Module& operator*() noexcept { return *ptr; }
 
-  const Module& operator*() const noexcept { return *ptr; }
+//   const Module& operator*() const noexcept { return *ptr; }
 
-  Module* operator->() noexcept { return ptr.get(); }
+//   Module* operator->() noexcept { return ptr.get(); }
 
-  const Module* operator->() const noexcept { return ptr.get(); }
+//   const Module* operator->() const noexcept { return ptr.get(); }
 
-  explicit operator bool() const noexcept { return static_cast<bool>(ptr); }
-};
+//   explicit operator bool() const noexcept { return static_cast<bool>(ptr); }
+// };
 
-class Sequential : public Module {
- private:
-  std::vector<std::pair<std::string, ModuleHolder>> modules_;
+// class Sequential : public Module {
+//  private:
+//   std::vector<std::pair<std::string, ModuleHolder>> modules_;
 
- public:
-  Sequential(std::initializer_list<ModuleHolder> modules);
+//  public:
+//   Sequential(std::initializer_list<ModuleHolder> modules);
 
-  Sequential(const Sequential&) = delete;
-  Sequential& operator=(const Sequential&) = delete;
+//   Sequential(const Sequential&) = delete;
+//   Sequential& operator=(const Sequential&) = delete;
 
-  Sequential(Sequential&&) = delete;
-  Sequential& operator=(Sequential&&) = delete;
+//   Sequential(Sequential&&) = delete;
+//   Sequential& operator=(Sequential&&) = delete;
 
-  Tensor forward(const Tensor& x) override;
+//   Tensor forward(const Tensor& x) override;
 
-  const std::vector<std::pair<std::string, ModuleHolder>>& modules()
-      const noexcept {
-    return modules_;
-  }
-};
+//   const std::vector<std::pair<std::string, ModuleHolder>>& modules()
+//       const noexcept {
+//     return modules_;
+//   }
+// };
 
-inline void Module::register_parameters(
-    std::initializer_list<std::pair<std::string_view, Tensor*>> pairs) {
-  for (const auto& [name, param] : pairs) {
-    named_params_.emplace_back(std::string(name), param);
-  }
+template <typename... Pairs>
+  requires((std::is_same_v<Pairs, std::pair<std::string_view, Tensor*>> && ...))
+void Module::register_parameters(Pairs&&... pairs) {
+  (named_params_.emplace_back(pairs), ...);
 }
 
-inline void Module::register_children(
-    std::initializer_list<std::pair<std::string_view, Module*>> pairs) {
-  for (const auto& [name, child] : pairs) {
-    named_children_.emplace_back(std::string(name), child);
-  }
+template <typename... Pairs>
+  requires((std::is_same_v<Pairs, std::pair<std::string_view, Module*>> && ...))
+void Module::register_children(Pairs&&... pairs) {
+  (named_children_.emplace_back(pairs), ...);
 }
 
 inline void Module::collect_named_parameters(
@@ -214,10 +219,8 @@ inline const std::vector<std::pair<std::string, Tensor*>>& Module::parameters()
 inline Linear::Linear(size_t in_dim, size_t out_dim)
     : weight_(Tensor::zeros({in_dim, out_dim})),
       bias_(Tensor::zeros({out_dim})) {
-  register_parameters({
-      {"weight", &weight_},
-      {"bias", &bias_},
-  });
+  register_parameters(namedparam("weight", &weight_),
+                      namedparam({"bias", &bias_}));
 }
 
 inline Tensor Linear::forward(const Tensor& x) {
@@ -228,33 +231,33 @@ inline Tensor Linear::forward(const Tensor& x) {
   return functional::add(functional::matmul(x, weight_), bias_);
 }
 
-inline Sequential::Sequential(std::initializer_list<ModuleHolder> modules) {
-  size_t index = 0;
+// inline Sequential::Sequential(std::initializer_list<ModuleHolder> modules) {
+//   size_t index = 0;
 
-  for (const auto& holder : modules) {
-    if (!holder.ptr) {
-      continue;
-    }
+//   for (const auto& holder : modules) {
+//     if (!holder.ptr) {
+//       continue;
+//     }
 
-    std::string name = std::to_string(index++);
+//     std::string name = std::to_string(index++);
 
-    modules_.emplace_back(name, holder);
+//     modules_.emplace_back(name, holder);
 
-    register_children({
-        {name, modules_.back().second.ptr.get()},
-    });
-  }
-}
+//     register_children({
+//         {name, modules_.back().second.ptr.get()},
+//     });
+//   }
+// }
 
-inline Tensor Sequential::forward(const Tensor& x) {
-  Tensor out = x;
+// inline Tensor Sequential::forward(const Tensor& x) {
+//   Tensor out = x;
 
-  for (auto& [_, holder] : modules_) {
-    out = holder->forward(out);
-  }
+//   for (auto& [_, holder] : modules_) {
+//     out = holder->forward(out);
+//   }
 
-  return out;
-}
+//   return out;
+// }
 
 }  // namespace nn
 }  // namespace tensors
