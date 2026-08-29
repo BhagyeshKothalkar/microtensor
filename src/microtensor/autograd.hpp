@@ -5,6 +5,7 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace tensors {
 
@@ -54,6 +55,10 @@ void for_each_tensor_parent(
     const T& item, const std::function<void(const Tensor&)>& callback) {
   if constexpr (std::is_same_v<std::decay_t<T>, Tensor>) {
     callback(item);
+  } else if constexpr (std::is_same_v<std::decay_t<T>, std::vector<Tensor>>) {
+    for (const Tensor& tensor : item) {
+      callback(tensor);
+    }
   }
 }
 

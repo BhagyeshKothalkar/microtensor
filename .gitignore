@@ -7,7 +7,11 @@ build/
 #accidental compilations
 a.out
 
-# temporary files and dump i create for debugging. 
+# temporary files and dump i create for debugging.
 temp.*
 dump.*
 .worktrees/
+
+# ide specific
+.vscode/
+.zed/

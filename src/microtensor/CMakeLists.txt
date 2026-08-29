@@ -5,6 +5,7 @@ add_library(microtensor_lib STATIC
     autograd.cpp
     tensor.cpp
     functional.cpp
+    nn.cpp
     broadcasting.cpp
 )
 

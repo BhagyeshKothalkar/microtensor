@@ -17,20 +17,22 @@ Tensor broadcast_to_shape(const Tensor& in,
     throw std::runtime_error("broadcast_to_shape(): incompatible shapes");
   }
 
-  for (size_t i = 0; i < target_rank; ++i) {
-    if (i < curr_rank) {
-      const size_t curr_dim_size = curr_shape[curr_rank - 1 - i];
-      const size_t target_dim_size = target_shape[target_rank - 1 - i];
+  const size_t rank_offset = target_rank - curr_rank;
+  for (size_t target_axis = 0; target_axis < target_rank; ++target_axis) {
+    if (target_axis >= rank_offset) {
+      const size_t curr_axis = target_axis - rank_offset;
+      const size_t curr_dim_size = curr_shape[curr_axis];
+      const size_t target_dim_size = target_shape[target_axis];
 
       if (curr_dim_size == target_dim_size) {
-        new_strides[target_rank - 1 - i] = curr_strides[curr_rank - 1 - i];
+        new_strides[target_axis] = curr_strides[curr_axis];
       } else if (curr_dim_size == 1) {
-        new_strides[target_rank - 1 - i] = 0;
+        new_strides[target_axis] = 0;
       } else {
         throw std::runtime_error("broadcast_to_shape(): incompatible shapes");
       }
     } else {
-      new_strides[target_rank - 1 - i] = 0;
+      new_strides[target_axis] = 0;
     }
   }
 

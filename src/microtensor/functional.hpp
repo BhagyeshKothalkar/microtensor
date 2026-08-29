@@ -34,8 +34,19 @@ Tensor gelu(const Tensor& a);
 
 Tensor sum(const Tensor& a, const std::vector<index_t>& dims = {},
            bool keepdims = false);
+Tensor max(const Tensor& a, const std::vector<index_t>& dims = {},
+           bool keepdims = false);
 Tensor mean(const Tensor& a, const std::vector<index_t>& dims = {},
             bool keepdims = false);
+Tensor softmax(const Tensor& a, index_t dim);
+Tensor logsoftmax(const Tensor& a, index_t dim);
+Tensor masked_fill(const Tensor& a, const Tensor& mask, float value);
+Tensor index_select(const Tensor& a, index_t dim, const Tensor& indices);
+Tensor cat(const std::vector<Tensor>& tensors, index_t dim);
+Tensor layer_norm(const Tensor& a, const std::vector<size_t>& normalized_shape,
+                  const Tensor& weight, const Tensor& bias, float eps = 1e-5f);
+Tensor cross_entropy(const Tensor& logits, const Tensor& targets,
+                     index_t dim = -1);
 Tensor rmsnorm(const Tensor& a, const std::vector<index_t>& dims = {},
                float eps = 1e-5f);
 Tensor matmul(const Tensor& a, const Tensor& b);

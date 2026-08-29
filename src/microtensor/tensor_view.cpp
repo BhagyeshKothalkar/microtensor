@@ -95,14 +95,16 @@ Tensor Tensor::transpose(index_t dim0, index_t dim1) const {
 
     auto parents = make_parents(*this);
 
-    auto backward_fn = [out = result, was_1d](const auto& parents) {
+    auto backward_fn = [out = result, was_1d, first,
+                        second](const auto& parents) {
       NoGradGuard guard;
 
       const auto& [lhs] = parents;
       const Tensor& grad = out.grad();
 
       if (lhs.requires_grad()) {
-        Tensor g = grad.transpose(0, 1);
+        Tensor g = grad.transpose(static_cast<index_t>(first),
+                                  static_cast<index_t>(second));
 
         if (was_1d) {
           // [1,k] -> [k]

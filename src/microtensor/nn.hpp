@@ -18,6 +18,7 @@ class Module {
  private:
   std::vector<std::pair<std::string, Module*>> named_children_;
   std::vector<std::pair<std::string, Tensor*>> named_params_;
+  bool training_ = true;
 
   void collect_named_parameters(
       const std::string& prefix,
@@ -54,6 +55,11 @@ class Module {
       const;
 
   std::vector<Tensor*> parameters_recursive() const;
+
+  void train(bool mode = true) noexcept;
+  void eval() noexcept;
+
+  bool is_training() const noexcept { return training_; }
 
   virtual Tensor forward(const Tensor& x) = 0;
 };
@@ -106,6 +112,70 @@ class ReLU : public Module {
 class GELU : public Module {
  public:
   Tensor forward(const Tensor& x) override { return functional::gelu(x); }
+};
+
+class Dropout : public Module {
+ private:
+  float probability_;
+
+ public:
+  explicit Dropout(float probability = 0.5f);
+  Tensor forward(const Tensor& x) override;
+};
+
+class Embedding : public Module {
+ private:
+  Tensor weight_;
+
+ public:
+  Embedding(size_t num_embeddings, size_t embedding_dim);
+  Tensor forward(const Tensor& x) override;
+
+  Tensor& weight() noexcept { return weight_; }
+
+  const Tensor& weight() const noexcept { return weight_; }
+};
+
+class LayerNorm : public Module {
+ private:
+  std::vector<size_t> normalized_shape_;
+  float eps_;
+  Tensor weight_;
+  Tensor bias_;
+
+ public:
+  explicit LayerNorm(std::vector<size_t> normalized_shape, float eps = 1e-5f);
+  Tensor forward(const Tensor& x) override;
+
+  Tensor& weight() noexcept { return weight_; }
+
+  const Tensor& weight() const noexcept { return weight_; }
+
+  Tensor& bias() noexcept { return bias_; }
+
+  const Tensor& bias() const noexcept { return bias_; }
+};
+
+class MultiHeadAttention : public Module {
+ private:
+  size_t embed_dim_;
+  size_t num_heads_;
+  size_t head_dim_;
+  Linear query_projection_;
+  Linear key_projection_;
+  Linear value_projection_;
+  Linear output_projection_;
+  Dropout dropout_;
+
+  Tensor forward_impl(const Tensor& query, const Tensor& context,
+                      const Tensor& mask);
+
+ public:
+  MultiHeadAttention(size_t embed_dim, size_t num_heads, float dropout = 0.0f);
+
+  Tensor forward(const Tensor& x) override;
+  Tensor forward(const Tensor& query, const Tensor& context,
+                 const Tensor& mask);
 };
 
 template <typename... Pairs>
@@ -173,6 +243,17 @@ inline std::vector<Tensor*> Module::parameters_recursive() const {
   return result;
 }
 
+inline void Module::train(bool mode) noexcept {
+  training_ = mode;
+  for (const auto& [_, child] : named_children_) {
+    if (child != nullptr) {
+      child->train(mode);
+    }
+  }
+}
+
+inline void Module::eval() noexcept { train(false); }
+
 inline const std::vector<std::pair<std::string, Module*>>& Module::children()
     const noexcept {
   return named_children_;
@@ -219,9 +300,7 @@ T& Sequential::emplace(Args&&... args) {
 
   modules_.push_back(std::move(module));
 
-  register_children({
-      {name, ptr},
-  });
+  register_children(namedchild({name, ptr}));
 
   return *ptr;
 }
