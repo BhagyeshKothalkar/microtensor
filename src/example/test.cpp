@@ -1,136 +1,139 @@
+#include <algorithm>
+#include <cmath>
 #include <iostream>
-#include <memory>
-#include <random>
-#include <vector>
 
-#include "microtensor/functional.hpp"
-#include "microtensor/nn.hpp"
-#include "microtensor/optimizer.hpp"
+#include "microtensor/tensor_iterator.hpp"
 
 using namespace tensors;
-using namespace tensors::nn;
-using namespace tensors::optim;
 
-static float scalar_value(const Tensor& x) { return x.data()[0]; }
+namespace {
 
-std::mt19937 rng(123);
+int failures = 0;
 
-static void init_linear(Linear& layer, std::mt19937& rng) {
-  std::uniform_real_distribution<float> dist(-0.1f, 0.1f);
+void expect_close(float got, float expected, const char* name) {
+  if (std::fabs(got - expected) > 1e-5f) {
+    std::cerr << "[FAIL] " << name << " got=" << got << " expected=" << expected
+              << "\n";
 
-  layer.weight().set_requires_grad(true);
-  layer.bias().set_requires_grad(true);
-
-  for (size_t i = 0; i < layer.weight().numel(); ++i) {
-    layer.weight().data()[i] = dist(rng);
-  }
-
-  for (size_t i = 0; i < layer.bias().numel(); ++i) {
-    layer.bias().data()[i] = 0.0f;
+    failures++;
+  } else {
+    std::cout << "[PASS] " << name << "\n";
   }
 }
 
-int main() {
-  // Focused feature harness; these APIs are intentionally added by this change.
-  std::cerr << "begin" << std::endl;
-  Tensor indexed({2, 3}, {1, 2, 3, 4, 5, 6});
-  if (indexed[-1, -1] != 6.0f) {
-    return 1;
-  }
-  std::cerr << "index" << std::endl;
+void test_sum_reduce_last_dimension_lvalue() {
+  Tensor src({2, 3}, {1, 2, 3, 4, 5, 6});
 
-  auto permuted = indexed.permute({1, 0});
-  if (permuted[-1, -1] != 6.0f) {
-    return 2;
-  }
-  std::cerr << "permute" << std::endl;
+  Tensor dst({2});
 
-  auto reduced = functional::sum(indexed, {-1});
-  if (reduced.shape() != std::vector<size_t>{2} || reduced[0] != 6.0f) {
-    return 3;
-  }
-  std::cerr << "reduced" << std::endl;
+  ReductionIterator<float, float> iter(std::vector<int>{1}, dst, src);
 
-  auto normalized = functional::rmsnorm(indexed, {-1});
-  if (normalized.shape() != indexed.shape()) {
-    return 4;
-  }
-  std::cerr << "normalized" << std::endl;
+  iter.for_each([](float& out, TensorIterator<const float> reduce) {
+    float sum = 0;
 
-  auto batched =
-      functional::matmul(Tensor::ones({2, 3, 4}), Tensor::ones({2, 4, 5}));
-  if (batched.shape() != std::vector<size_t>{2, 3, 5} ||
-      batched[0, 0, 0] != 4.0f) {
-    std::cerr << "matmul incorrect" << std::endl;
-  }
-  std::cerr << "matmul correct" << std::endl;
+    reduce.for_each([&](const float& x) { sum += x; });
 
-  class mymodule : public Module {
-    Linear l1;
-    Linear l2;
+    out = sum;
+  });
 
-   public:
-    mymodule() : l1(4, 16), l2(16, 4) {
-      init_linear(l1, rng);
-      init_linear(l2, rng);
-      register_children(namedchild("l1", &l1), namedchild("l2", &l2));
-    }
+  expect_close(dst[0], 6, "sum reduce dim1 row0");
+  expect_close(dst[1], 15, "sum reduce dim1 row1");
+}
 
-    Tensor forward(const Tensor& x) override {
-      return l2.forward(functional::relu(l1.forward(x)));
-    }
-  };
+void test_sum_reduce_first_dimension_lvalue() {
+  Tensor src({2, 3}, {1, 2, 3, 4, 5, 6});
 
-  class mymodule2 : public Module {
-    Linear l1;
-    Linear l2;
+  Tensor dst({3});
 
-   public:
-    mymodule2() : l1(4, 16), l2(16, 1) {
-      init_linear(l1, rng);
-      init_linear(l2, rng);
-      register_children(namedchild("l1", &l1), namedchild("l2", &l2));
-    }
+  ReductionIterator<float, float> iter(std::vector<int>{0}, dst, src);
 
-    Tensor forward(const Tensor& x) override {
-      return l2.forward(functional::relu(l1.forward(x)));
-    }
-  };
+  iter.for_each([](float& out, TensorIterator<const float> reduce) {
+    float sum = 0;
 
-  Sequential model(std::make_unique<mymodule>(), std::make_unique<mymodule2>());
+    reduce.for_each([&](const float& x) { sum += x; });
 
-  optim::Adam optimizer(model.parameters_recursive(), 0.01f);
+    out = sum;
+  });
 
-  // Dummy regression data.
-  Tensor x({4}, {
-                    0.5f,
-                    -1.0f,
-                    2.0f,
-                    0.25f,
-                });
+  expect_close(dst[0], 5, "sum reduce dim0 col0");
+  expect_close(dst[1], 7, "sum reduce dim0 col1");
+  expect_close(dst[2], 9, "sum reduce dim0 col2");
+}
 
-  Tensor target({1}, {
-                         0.75f,
-                     });
+void test_max_reduce() {
+  Tensor src({2, 3}, {1, 8, 3, 4, 5, 9});
 
-  for (int step = 0; step < 100; ++step) {
-    // Forward.
-    Tensor prediction = model.forward(x);
+  Tensor dst({2});
 
-    // MSE.
-    Tensor diff = functional::sub(prediction, target);
-    Tensor loss = functional::mean(functional::mul(diff, diff));
+  ReductionIterator<float, float> iter(std::vector<int>{1}, dst, src);
 
-    float loss_value = scalar_value(loss);
+  iter.for_each([](float& out, TensorIterator<const float> reduce) {
+    float mx = -INFINITY;
 
-    // Backward.
-    loss.backward();
+    reduce.for_each([&](const float& x) { mx = std::max(mx, x); });
 
-    // // SGD.
-    optimizer.step();
-    optimizer.zero_grad();
+    out = mx;
+  });
 
-    std::cerr << "step " << step << " loss = " << loss_value
-              << " prediction = " << prediction.data()[0] << '\n';
+  expect_close(dst[0], 8, "max reduce row0");
+  expect_close(dst[1], 9, "max reduce row1");
+}
+
+void test_mean_reduce() {
+  Tensor src({2, 2}, {2, 4, 6, 8});
+
+  Tensor dst({2});
+
+  ReductionIterator<float, float> iter(std::vector<int>{1}, dst, src);
+
+  iter.for_each([](float& out, TensorIterator<const float> reduce) {
+    float sum = 0;
+    int count = 0;
+
+    reduce.for_each([&](const float& x) {
+      sum += x;
+      count++;
+    });
+
+    out = sum / count;
+  });
+
+  expect_close(dst[0], 3, "mean row0");
+  expect_close(dst[1], 7, "mean row1");
+}
+
+void test_constant_rvalue_source() {
+  Tensor dst({2});
+
+  ReductionIterator<float, float> iter(std::vector<int>{1}, dst,
+                                       Tensor({2, 2}, {1, 2, 3, 4}));
+
+  iter.for_each([](float& out, TensorIterator<const float> reduce) {
+    float sum = 0;
+
+    reduce.for_each([&](const float& x) { sum += x; });
+
+    out = sum;
+  });
+
+  expect_close(dst[0], 3, "rvalue source row0");
+  expect_close(dst[1], 7, "rvalue source row1");
+}
+
+void test_reduction_iterator() {
+  test_sum_reduce_last_dimension_lvalue();
+  test_sum_reduce_first_dimension_lvalue();
+  test_max_reduce();
+  test_mean_reduce();
+  test_constant_rvalue_source();
+
+  if (failures) {
+    std::cerr << failures << " failures\n";
+  } else {
+    std::cout << "all reduction iterator tests passed\n";
   }
 }
+
+}  // namespace
+
+int main() { test_reduction_iterator(); }
