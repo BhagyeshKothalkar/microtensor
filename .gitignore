@@ -10,4 +10,4 @@ a.out
 # temporary files and dump i create for debugging. 
 temp.*
 dump.*
-
+.worktrees/
