@@ -1,4 +1,4 @@
-FROM gcc:14-bookworm AS builder
+FROM gcc:15-bookworm AS builder
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake ninja-build \
@@ -15,7 +15,7 @@ RUN cmake -S . -B build -G Ninja \
     && cp src/microtensor/*.hpp /opt/microtensor/include/microtensor/ \
     && cp build/src/microtensor/libmicrotensor_lib.a /opt/microtensor/lib/
 
-FROM gcc:14-bookworm
+FROM gcc:15-bookworm
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake ninja-build \
