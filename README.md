@@ -152,3 +152,20 @@ To format C++ sources and headers using the repository configuration:
 ```bash
 ./scripts/format.sh
 ```
+
+
+## Continuous integration and Docker
+
+GitHub Actions builds the project with tests enabled and runs the existing CTest suite on pull requests and pushes to `main`.
+
+After the build and tests pass on `main`, the workflow builds the repository's `Dockerfile` and pushes two tags to Docker Hub:
+
+- `<dockerhub-user>/microtensor:latest`
+- `<dockerhub-user>/microtensor:<git-sha>`
+
+Configure these repository secrets under **Settings → Secrets and variables → Actions** before merging the workflow:
+
+- `DOCKERHUB_USERNAME` – Docker Hub username / namespace
+- `DOCKERHUB_TOKEN` – Docker Hub access token with permission to push the `microtensor` repository
+
+The published image contains GCC 14, CMake, Ninja, the prebuilt `libmicrotensor_lib.a`, and the public microtensor headers, so it can be used as a reproducible C++ build environment.
