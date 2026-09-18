@@ -47,7 +47,7 @@ TEST_F(TensorTests, TestCpuKernelsMultiply) {
   // Hand-drafted elementwise multiply
   Tensor a({2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
   Tensor b({2, 3}, {2.0f, 0.5f, 3.0f, 0.25f, 2.0f, 0.0f});
-  cpu_kernels::elementwise_multiply(a, b);
+  cpu_kernels::mul(a, b);
 
   EXPECT_FLOAT_EQ((a[0, 0]), 2.0f);
   EXPECT_FLOAT_EQ((a[0, 1]), 1.0f);
@@ -58,7 +58,7 @@ TEST_F(TensorTests, TestCpuKernelsMultiply) {
 
   // Hand-drafted scalar multiply
   Tensor c({2}, {3.0f, -4.0f});
-  cpu_kernels::scalar_multiply(c, 2.5f);
+  cpu_kernels::mul(c, 2.5f);
   EXPECT_FLOAT_EQ(c[0], 7.5f);
   EXPECT_FLOAT_EQ(c[1], -10.0f);
 
@@ -68,7 +68,7 @@ TEST_F(TensorTests, TestCpuKernelsMultiply) {
   std::uniform_real_distribution<float> scalar_dist(-10.0f, 10.0f);
   float s = scalar_dist(gen);
 
-  cpu_kernels::scalar_multiply(rand_a, s);
+  cpu_kernels::mul(rand_a, s);
   for (size_t i = 0; i < rand_a.numel(); ++i) {
     EXPECT_FLOAT_EQ(rand_a.data()[i], orig.data()[i] * s);
   }
