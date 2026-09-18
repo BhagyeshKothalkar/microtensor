@@ -61,6 +61,20 @@ ninja -C build
 
 The repository's maintained executable checks are under `src/example`.
 
+### Running the tests
+
+The unit tests use GoogleTest, which CMake fetches when testing is enabled:
+
+```bash
+./scripts/build_test.sh
+./scripts/run_tests.sh
+```
+
+The suite covers tensor storage and iteration, broadcasting, functional
+operations, CPU kernels, neural-network modules, and autograd. Functional
+cases share operation metadata and expected outputs, while autograd tests also
+use finite-difference checks for selected gradients.
+
 ## Running the examples
 
 Executables are placed in `build/bin/`:
@@ -144,6 +158,7 @@ mode. `Dropout` observes the module mode.
 
 - `src/microtensor/` – library implementation and public headers
 - `src/example/` – maintained executable examples and feature checks
+- `tests/` – GoogleTest unit tests and shared tensor/operation test helpers
 - `scripts/` – build, test, and formatting entry points
 - `CMakeLists.txt` – project configuration and build options
 
