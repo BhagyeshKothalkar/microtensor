@@ -14,7 +14,7 @@ using namespace tensors;
 TEST_F(TensorTests, TestComputeStridesAndSize) {
   // Empty shape edge case
   EXPECT_TRUE(compute_strides({}).empty());
-  EXPECT_EQ(compute_size({}), 0u);
+  EXPECT_EQ(compute_size({}), 1u);
 
   // 1D shape
   EXPECT_EQ(compute_strides({5}), std::vector<size_t>({1}));
@@ -63,9 +63,9 @@ TEST_F(TensorTests, TestTensorCreation) {
   std::vector<size_t> s = random_shape();
   size_t s_size = compute_size(s);
   size_t offset = std::uniform_int_distribution<size_t>(0, s_size - 1)(gen);
-  auto storage = std::make_shared_for_overwrite<float[]>(s_size);
+  auto storage = std::make_shared_for_overwrite<float[]>(s_size + offset);
 
-  Tensor a3(s, compute_strides(s), storage, offset);
+  Tensor a3(s, compute_strides(s), storage, s_size + offset, offset);
   EXPECT_EQ(a3.data(), a3.storage().get() + offset);
   EXPECT_EQ(a3.offset(), offset);
 
@@ -83,8 +83,10 @@ TEST_F(TensorTests, TestTensorCreation) {
   size_t rand_size = compute_size(rand_s);
   size_t rand_offset =
       std::uniform_int_distribution<size_t>(0, rand_size - 1)(gen);
-  auto rand_storage = std::make_shared_for_overwrite<float[]>(rand_size);
-  Tensor rand_view(rand_s, compute_strides(rand_s), rand_storage, rand_offset);
+  auto rand_storage =
+      std::make_shared_for_overwrite<float[]>(rand_size + rand_offset);
+  Tensor rand_view(rand_s, compute_strides(rand_s), rand_storage,
+                   rand_size + rand_offset, rand_offset);
   EXPECT_EQ(rand_view.numel(), rand_size);
   EXPECT_EQ(rand_view.ndim(), rand_s.size());
   EXPECT_EQ(rand_view.data(), rand_storage.get() + rand_offset);
@@ -222,6 +224,23 @@ TEST_F(TensorTests, TestIndexingAndMutations) {
   }
 }
 
+TEST_F(TensorTests, NegativeIndexingMatchesPositiveIndexing) {
+  Tensor tensor({2, 3}, {1, 2, 3, 4, 5, 6});
+  EXPECT_EQ((tensor[-1, -1]), 6.0f);
+  EXPECT_EQ((tensor[-1, 0]), 4.0f);
+  EXPECT_EQ((tensor[0, -1]), 3.0f);
+}
+
+TEST_F(TensorTests, PermutedViewSupportsNegativeIndexingAndValues) {
+  Tensor tensor({2, 3}, {1, 2, 3, 4, 5, 6});
+  Tensor permuted = tensor.permute({1, 0});
+  EXPECT_EQ(permuted.shape(), (std::vector<size_t>{3, 2}));
+  EXPECT_EQ((permuted[-1, -1]), 6.0f);
+  EXPECT_EQ((permuted[0, 0]), 1.0f);
+  EXPECT_EQ((permuted[0, 1]), 4.0f);
+  EXPECT_EQ((permuted[2, 0]), 3.0f);
+}
+
 /* Cloning and Storage Sharing */
 
 TEST_F(TensorTests, TestClone) {
@@ -256,7 +275,7 @@ TEST_F(TensorTests, TestSharedStorageView) {
   Tensor original({2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
 
   // Create a view sharing original storage with an offset of 2
-  Tensor view({2}, {1}, original.storage(), 2);
+  Tensor view({2}, {1}, original.storage(), original.storage_size(), 2);
 
   EXPECT_EQ(view.data(), original.data() + 2);
   EXPECT_EQ(view[0], 3.0f);
@@ -275,7 +294,8 @@ TEST_F(TensorTests, TestSharedStorageView) {
     std::uniform_int_distribution<size_t> off_dist(0, rand_size - 1);
     size_t rand_off = off_dist(gen);
     size_t view_len = rand_size - rand_off;
-    Tensor rand_view({view_len}, {1}, rand_base.storage(), rand_off);
+    Tensor rand_view({view_len}, {1}, rand_base.storage(),
+                     rand_base.storage_size(), rand_off);
 
     float new_val = 123.45f;
     rand_view[0] = new_val;
@@ -297,7 +317,8 @@ TEST_F(TensorTests, TestContiguityAndMetadata) {
   std::vector<size_t> shape = {2, 3};
   std::vector<size_t> non_contiguous_strides = {1, 2};  // Column-major strides
   Tensor non_contiguous(shape, non_contiguous_strides,
-                        contiguous_tensor.storage(), 0);
+                        contiguous_tensor.storage(),
+                        contiguous_tensor.storage_size(), 0);
   EXPECT_FALSE(non_contiguous.is_contiguous());
 
   // Empty tensor contiguity edge case

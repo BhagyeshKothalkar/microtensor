@@ -2,12 +2,141 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
+#include <string>
+#include <vector>
 
 #include "microtensor/functional.hpp"
+#include "microtensor/nn.hpp"
 #include "microtensor/tensor.hpp"
+#include "opinfo_test.h"
 
 using namespace tensors;
+
+namespace {
+
+struct AutogradCase {
+  std::string name;
+  Tensor input;
+  std::function<Tensor(const Tensor&)> loss;
+  std::vector<float> expected_gradient;
+  float tolerance = 1e-4f;
+  bool check_finite_difference = false;
+  float finite_difference_epsilon = 1e-3f;
+};
+
+void expect_autograd_case(const AutogradCase& test_case) {
+  Tensor input = test_case.input.clone();
+  input.set_requires_grad(true);
+
+  Tensor loss = test_case.loss(input);
+  SCOPED_TRACE(test_case.name);
+  ASSERT_TRUE(loss.shape().empty()) << "loss must be scalar";
+  ASSERT_EQ(loss.numel(), 1u);
+  loss.backward();
+
+  ASSERT_TRUE(input.has_grad());
+  test_support::expect_tensor_shape(input.grad(), input.shape());
+  test_support::expect_tensor_values(input.grad(), test_case.expected_gradient,
+                                     test_case.tolerance);
+
+  if (test_case.check_finite_difference) {
+    Tensor numerical = test_support::finite_difference_gradient(
+        test_case.input, test_case.loss,
+        test_case.finite_difference_epsilon);
+    test_support::expect_tensor_close(input.grad(), numerical,
+                                      test_case.tolerance);
+  }
+}
+
+std::vector<AutogradCase> migrated_autograd_cases() {
+  Tensor softmax_weights({2, 3}, {1.0f, -2.0f, 3.0f, -1.0f, 2.0f, -3.0f});
+  Tensor mask({2, 3}, {0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f});
+  Tensor indices({2}, {2.0f, 0.0f});
+  Tensor targets({2}, {2.0f, 0.0f});
+
+  return {
+      {"max", Tensor({2, 3}, {1.0f, 8.0f, 3.0f, 4.0f, 5.0f, 9.0f}),
+       [](const Tensor& x) {
+         return functional::sum(functional::max(x, {1}), {0});
+       },
+       {0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f}},
+      {"weighted_softmax", Tensor({2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+                                             6.0f}),
+       [softmax_weights](const Tensor& x) {
+         return functional::sum(
+             functional::mul(functional::softmax(x, -1), softmax_weights),
+             {0, 1});
+       },
+       {-0.05368491f, -0.8801161f, 0.9338011f, 0.05368491f, 0.8801161f,
+        -0.9338011f},
+       3e-4f, true},
+      {"weighted_logsoftmax", Tensor({2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+                                                6.0f}),
+       [softmax_weights](const Tensor& x) {
+         return functional::sum(
+             functional::mul(functional::logsoftmax(x, -1), softmax_weights),
+             {0, 1});
+       },
+       {0.81993884f, -2.4894569f, 1.6695181f, -0.81993884f, 2.4894569f,
+        -1.6695181f},
+       3e-4f, true},
+      {"masked_fill", Tensor({2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}),
+       [mask](const Tensor& x) {
+         return functional::sum(
+             functional::masked_fill(x, mask, -1.0f), {0, 1});
+       },
+       {1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f}},
+      {"index_select", Tensor({2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}),
+       [indices](const Tensor& x) {
+         return functional::sum(functional::index_select(x, 1, indices),
+                                {0, 1});
+       },
+       {1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f}},
+      {"cat", Tensor({2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}),
+       [](const Tensor& x) {
+         return functional::sum(functional::cat({x, x}, 0), {0, 1});
+       },
+       {2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f}},
+      {"cross_entropy", Tensor({2, 3}, {1.0f, 2.0f, 3.0f, 3.0f, 2.0f,
+                                         1.0f}),
+       [targets](const Tensor& x) { return functional::cross_entropy(x, targets); },
+       {0.0450153f, 0.1223642f, -0.1673795f, -0.1673795f, 0.1223642f,
+        0.0450153f},
+       2e-5f, true},
+      {"sum_of_squares", Tensor({3}, {1.0f, 2.0f, -3.0f}),
+       [](const Tensor& x) { return functional::sum(x * x, {0}); },
+       {2.0f, 4.0f, -6.0f}},
+  };
+}
+
+}  // namespace
+
+TEST(AutogradTests, MigratedAutogradCases) {
+  for (const AutogradCase& test_case : migrated_autograd_cases()) {
+    SCOPED_TRACE(test_case.name);
+    expect_autograd_case(test_case);
+  }
+}
+
+TEST(AutogradTests, MultiHeadAttentionInputGradient) {
+  nn::MultiHeadAttention attention(4, 2, 0.0f);
+  for (Tensor* parameter : attention.parameters_recursive()) {
+    std::fill_n(parameter->data(), parameter->numel(), 0.0f);
+  }
+
+  AutogradCase test_case{
+      "multihead_attention_input",
+      Tensor({1, 3, 4}, {1.0f, 2.0f, 3.0f, 4.0f, 2.0f, 3.0f,
+                         4.0f, 5.0f, 3.0f, 4.0f, 5.0f, 6.0f}),
+      [&attention](const Tensor& x) {
+        return functional::sum(attention.forward(x), {0, 1, 2});
+      },
+      std::vector<float>(12, 0.0f), 1e-5f};
+  expect_autograd_case(test_case);
+}
 
 TEST(AutogradTests, TestBasicAddSubMulDiv) {
   Tensor x({1}, {3.0f});
@@ -160,9 +289,8 @@ TEST(AutogradTests, TestReshapeTransposeBroadcastingViewOps) {
   Tensor x({6}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
   x.set_requires_grad(true);
 
-  Tensor x_reshaped = functional::reshape(x, {2, 3});
-  Tensor x_transposed =
-      functional::transpose(x_reshaped, 0, 1);  // shape (3, 2)
+  Tensor x_reshaped = x.view({2, 3});
+  Tensor x_transposed = x_reshaped.transpose(0, 1);  // shape (3, 2)
   Tensor loss = functional::sum(x_transposed);
 
   loss.backward();

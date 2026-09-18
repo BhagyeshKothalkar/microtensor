@@ -109,7 +109,7 @@ TEST_F(TensorTests, TestTensorIteratorBroadcastingAndTerms) {
   // storage
   auto scalar_storage = std::make_shared<float[]>(1);
   scalar_storage[0] = 5.0f;
-  Tensor b_scalar({3}, {0}, scalar_storage, 0);
+  Tensor b_scalar({3}, {0}, scalar_storage, 1, 0);
 
   TensorIterator<float, const float, const float> it(dst, a, b_scalar);
 

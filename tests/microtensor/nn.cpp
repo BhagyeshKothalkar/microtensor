@@ -1,7 +1,10 @@
+#include "microtensor/functional.hpp"
 #include "microtensor/nn.hpp"
+#include "microtensor/optimizer.hpp"
 
-#include <cstddef>
-#include <string>
+#include <algorithm>
+#include <cmath>
+#include <memory>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -12,151 +15,165 @@ using namespace tensors;
 using namespace tensors::nn;
 
 namespace {
-
-/* Helper Dummy Modules for Testing */
-
-class DummyModule : public Module {
- public:
-  Tensor p1, p2;
-  DummyModule* child_ptr = nullptr;
-
-  DummyModule() : p1({1}), p2({2}) {
-    register_parameters({{"param1", &p1}, {"param2", &p2}});
-  }
-
-  void add_child(DummyModule* c) {
-    child_ptr = c;
-    register_children({{"dummy_child", child_ptr}});
-  }
-
-  Tensor forward(const Tensor& x) override { return x; }
-};
-
 class AddOneModule : public Module {
  public:
   Tensor forward(const Tensor& x) override {
-    Tensor out = x.clone();
-    // Simulate an operation: adding 1.0f to each element
-    for (size_t i = 0; i < out.numel(); ++i) {
-      out.data()[i] += 1.0f;
-    }
-    return out;
+    Tensor result = x.clone();
+    for (size_t i = 0; i < result.numel(); ++i) result.data()[i] += 1.0f;
+    return result;
   }
 };
 
+void expect_values(const Tensor& actual, const std::vector<float>& expected,
+                   float tolerance = 1e-5f) {
+  ASSERT_EQ(actual.numel(), expected.size());
+  for (size_t i = 0; i < expected.size(); ++i)
+    EXPECT_NEAR(actual.data()[i], expected[i], tolerance) << "index " << i;
+}
+
+void initialize_attention(MultiHeadAttention& attention) {
+  for (Tensor* parameter : attention.parameters_recursive()) {
+    ASSERT_NE(parameter, nullptr);
+    std::fill_n(parameter->data(), parameter->numel(), 0.0f);
+    if (parameter->ndim() == 2) {
+      const size_t diagonal =
+          std::min(parameter->shape()[0], parameter->shape()[1]);
+      for (size_t i = 0; i < diagonal; ++i)
+        parameter->data()[i * parameter->shape()[1] + i] = 1.0f;
+    }
+  }
+}
 }  // namespace
 
-/* Base Module Registration Tests */
-
-TEST_F(TensorTests, TestModuleRegistration) {
-  DummyModule dummy;
-  DummyModule child;
-  dummy.add_child(&child);
-
-  // Hand-drafted explicit checks for registered parameters
-  const auto& params = dummy.parameters();
-  EXPECT_EQ(params.size(), 2);
-  EXPECT_EQ(params[0].first, "param1");
-  EXPECT_EQ(params[0].second, &dummy.p1);
-  EXPECT_EQ(params[1].first, "param2");
-  EXPECT_EQ(params[1].second, &dummy.p2);
-
-  // Hand-drafted explicit checks for registered children
-  const auto& children = dummy.children();
-  EXPECT_EQ(children.size(), 1);
-  EXPECT_EQ(children[0].first, "dummy_child");
-  EXPECT_EQ(children[0].second, &child);
+TEST_F(TensorTests, ModuleRegistrationAndModePropagation) {
+  Sequential model;
+  Dropout& dropout = model.emplace<Dropout>(0.5f);
+  model.emplace<AddOneModule>();
+  ASSERT_EQ(model.children().size(), 2u);
+  EXPECT_EQ(model.children()[0].first, "0");
+  EXPECT_EQ(model.children()[1].first, "1");
+  model.eval();
+  EXPECT_FALSE(model.is_training());
+  EXPECT_FALSE(dropout.is_training());
+  model.train();
+  EXPECT_TRUE(model.is_training());
+  EXPECT_TRUE(dropout.is_training());
 }
 
-/* Linear Layer Tests */
-
-TEST_F(TensorTests, TestLinearLayer) {
-  // Check proper initialization of Linear layer
-  size_t in_features = 3;
-  size_t out_features = 2;
-  Linear linear(in_features, out_features);
-
-  const auto& params = linear.parameters();
-  EXPECT_EQ(params.size(), 2);
-
-  Tensor* w = nullptr;
-  Tensor* b = nullptr;
-  for (const auto& [name, param] : params) {
-    if (name == "weight") {
-      w = param;
-    }
-    if (name == "bias") {
-      b = param;
-    }
-  }
-
-  ASSERT_NE(w, nullptr);
-  ASSERT_NE(b, nullptr);
-
-  // Verify weights and bias shapes are constructed correctly
-  std::vector<size_t> expected_w_shape = {in_features, out_features};
-  std::vector<size_t> expected_b_shape = {out_features};
-  EXPECT_EQ(w->shape(), expected_w_shape);
-  EXPECT_EQ(b->shape(), expected_b_shape);
-
-  // Note: We bypass a direct numeric output check for `forward` here
-  // because `Linear::forward` relies on the external `functional` components
-  // that were mocked in previous layers. We ensure it doesn't crash on standard
-  // input.
-  Tensor x({in_features});
-
-  // As long as the dimensions match, the forward pass should successfully
-  // return
-  EXPECT_NO_THROW({ Tensor out = linear.forward(x); });
-
-  // Randomized test: Verify dynamic instantiation and param shapes
-  std::uniform_int_distribution<size_t> dim_dist(10, 100);
-  size_t rand_in = dim_dist(gen);
-  size_t rand_out = dim_dist(gen);
-
-  Linear rand_linear(rand_in, rand_out);
-  Tensor rand_x({1, rand_in});
-
-  EXPECT_EQ(rand_linear.parameters().size(), 2);
-  EXPECT_NO_THROW({ rand_linear.forward(rand_x); });
+TEST_F(TensorTests, SequentialAndLinearHaveDeterministicForwardValues) {
+  auto linear = std::make_unique<Linear>(2, 2);
+  linear->weight().set_requires_grad(true);
+  linear->bias().set_requires_grad(true);
+  linear->weight() = Tensor({2, 2}, {1, 2, 3, 4});
+  linear->bias() = Tensor({2}, {0.5f, -1.0f});
+  Sequential model(std::move(linear));
+  Tensor output = model.forward(Tensor({1, 2}, {2, 3}));
+  EXPECT_EQ(output.shape(), (std::vector<size_t>{1, 2}));
+  expect_values(output, {11.5f, 15.0f});
+  ASSERT_EQ(model.named_parameters_recursive().size(), 2u);
+  EXPECT_EQ(model.named_parameters_recursive()[0].first, "0.weight");
+  EXPECT_EQ(model.named_parameters_recursive()[1].first, "0.bias");
 }
 
-/* Sequential Container Tests */
-
-TEST_F(TensorTests, TestSequentialContainer) {
-  // Hand-drafted sequential execution with deterministic helper modules
-  Sequential seq({AddOneModule(), AddOneModule(), AddOneModule()});
-
-  // Verify automatic sequential naming ("0", "1", "2") and count
-  const auto& children = seq.children();
-  EXPECT_EQ(children.size(), 3);
-  EXPECT_EQ(children[0].first, "0");
-  EXPECT_EQ(children[1].first, "1");
-  EXPECT_EQ(children[2].first, "2");
-
-  // Verify functional forwarding sequentially executes children (x + 1 + 1 + 1)
-  Tensor input({2}, {5.0f, 10.0f});
-  Tensor output = seq.forward(input);
-
-  EXPECT_FLOAT_EQ(output.data()[0], 8.0f);
-  EXPECT_FLOAT_EQ(output.data()[1], 13.0f);
-
-  // Randomized test: Build a sequential model dynamically with random depth
-  std::uniform_int_distribution<size_t> depth_dist(1, 10);
-  size_t depth = depth_dist(gen);
-
-  std::vector<ModuleHolder> holders;
-  for (size_t i = 0; i < depth; ++i) {
-    holders.emplace_back(AddOneModule());
+TEST_F(TensorTests, DropoutEvalIsIdentityAndTrainingMasksWithoutChangingShape) {
+  Dropout dropout(0.5f);
+  Tensor input = Tensor::ones({256});
+  dropout.eval();
+  Tensor evaluation = dropout.forward(input);
+  EXPECT_EQ(evaluation.shape(), input.shape());
+  expect_values(evaluation, std::vector<float>(256, 1.0f));
+  dropout.train();
+  Tensor training = dropout.forward(input);
+  EXPECT_EQ(training.shape(), input.shape());
+  bool saw_zero = false;
+  bool saw_kept = false;
+  for (size_t i = 0; i < training.numel(); ++i) {
+    saw_zero = saw_zero || training.data()[i] == 0.0f;
+    saw_kept = saw_kept || training.data()[i] == 2.0f;
+    EXPECT_TRUE(training.data()[i] == 0.0f || training.data()[i] == 2.0f);
   }
+  EXPECT_TRUE(saw_zero);
+  EXPECT_TRUE(saw_kept);
+}
 
-  // Construct a Sequential dynamically via copying the initializer list
-  // Note: std::initializer_list is tricky to build dynamically,
-  // so we test the iteration output properties directly.
-  Tensor rand_input({1}, {0.0f});
-  for (auto& h : holders) {
-    rand_input = h.ptr->forward(rand_input);
+TEST_F(TensorTests, EmbeddingSelectsRowsAndAccumulatesSelectedGradients) {
+  Embedding embedding(3, 2);
+  embedding.weight() = Tensor({3, 2}, {1, 2, 3, 4, 5, 6});
+  embedding.weight().set_requires_grad(true);
+  Tensor output = embedding.forward(Tensor({3}, {2, 0, 2}));
+  EXPECT_EQ(output.shape(), (std::vector<size_t>{3, 2}));
+  expect_values(output, {5, 6, 1, 2, 5, 6});
+  Tensor loss = functional::sum(output, {0, 1});
+  ASSERT_EQ(loss.shape(), (std::vector<size_t>{}));
+  loss.backward();
+  expect_values(embedding.weight().grad(), {1, 1, 0, 0, 2, 2});
+}
+
+TEST_F(TensorTests, LayerNormPreservesShapeAndNormalizesRows) {
+  LayerNorm norm({3});
+  Tensor output = norm.forward(Tensor({2, 3}, {1, 2, 3, 4, 5, 6}));
+  EXPECT_EQ(output.shape(), (std::vector<size_t>{2, 3}));
+  for (size_t row = 0; row < 2; ++row) {
+    float mean = 0.0f;
+    for (size_t column = 0; column < 3; ++column)
+      mean += output.data()[row * 3 + column];
+    EXPECT_NEAR(mean / 3.0f, 0.0f, 1e-5f);
   }
+  EXPECT_NEAR(output.data()[0], -1.22474f, 1e-4f);
+  EXPECT_NEAR(output.data()[2], 1.22474f, 1e-4f);
+}
 
-  EXPECT_FLOAT_EQ(rand_input.data()[0], static_cast<float>(depth));
+TEST_F(TensorTests, AttentionCausalForwardDoesNotReadFutureTokens) {
+  MultiHeadAttention attention(4, 2);
+  initialize_attention(attention);
+  Tensor input({1, 3, 4}, {1, 2, 3, 4, 2, 3, 4, 5, 3, 4, 5, 6});
+  Tensor original = attention.forward(input);
+  EXPECT_EQ(original.shape(), (std::vector<size_t>{1, 3, 4}));
+  Tensor changed_future = input.clone();
+  std::fill_n(changed_future.data() + 4, 8, 100.0f);
+  Tensor changed = attention.forward(changed_future);
+  for (size_t i = 0; i < 4; ++i)
+    EXPECT_NEAR(original.data()[i], changed.data()[i], 1e-5f);
+}
+
+TEST_F(TensorTests, AttentionCrossForwardPreservesQueryShapeAndMask) {
+  MultiHeadAttention attention(4, 2);
+  initialize_attention(attention);
+  Tensor query({1, 2, 4}, {1, 2, 3, 4, 4, 3, 2, 1});
+  Tensor context({1, 3, 4}, {1, 0, 2, 0, 0, 1, 0, 2, 2, 1, 0, 1});
+  Tensor mask({2, 3}, {0, 0, 1, 0, 0, 0});
+  Tensor output = attention.forward(query, context, mask);
+  EXPECT_EQ(output.shape(), (std::vector<size_t>{1, 2, 4}));
+  for (size_t i = 0; i < output.numel(); ++i)
+    EXPECT_TRUE(std::isfinite(output.data()[i]));
+}
+
+TEST_F(TensorTests, AdamUpdatesModelAndZeroGradClearsGradients) {
+  auto first = std::make_unique<Linear>(2, 3);
+  auto second = std::make_unique<Linear>(3, 1);
+  first->weight() = Tensor({2, 3}, {0.1f, -0.2f, 0.3f, 0.4f, -0.5f, 0.6f});
+  first->bias() = Tensor({3}, {0, 0, 0});
+  second->weight() = Tensor({3, 1}, {0.2f, -0.3f, 0.4f});
+  second->bias() = Tensor({1}, {0});
+  first->weight().set_requires_grad(true);
+  first->bias().set_requires_grad(true);
+  second->weight().set_requires_grad(true);
+  second->bias().set_requires_grad(true);
+  Sequential model(std::move(first), std::move(second));
+  optim::Adam optimizer(model.parameters_recursive(), 0.01f);
+  Tensor before = model.parameters_recursive()[0]->clone();
+  Tensor input({2}, {1.0f, -2.0f});
+  Tensor target({1}, {0.75f});
+  for (int step = 0; step < 3; ++step) {
+    Tensor prediction = model.forward(input);
+    Tensor diff = functional::sub(prediction, target);
+    Tensor loss = functional::mean(functional::mul(diff, diff));
+    loss.backward();
+    optimizer.step();
+    optimizer.zero_grad();
+  }
+  EXPECT_NE(model.parameters_recursive()[0]->data()[0], before.data()[0]);
+  for (Tensor* parameter : model.parameters_recursive())
+    if (parameter->has_grad())
+      expect_values(parameter->grad(), std::vector<float>(parameter->numel(), 0.0f));
 }
